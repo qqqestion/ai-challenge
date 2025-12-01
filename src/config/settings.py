@@ -26,8 +26,8 @@ class Settings(BaseSettings):
         description="Yandex Cloud Folder ID"
     )
     yandex_model_uri: str = Field(
-        default="gpt://b1ghsjum2v37ev6vq36q/yandexgpt/latest",
-        description="Yandex GPT Model URI"
+        default="",
+        description="Yandex GPT Model URI (auto-generated from folder_id if not specified)"
     )
     yandex_llm_endpoint: str = Field(
         default="https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
