@@ -54,7 +54,6 @@ async def initialize_application():
     # Initialize state manager
     logger.info("Initializing state manager...")
     state_manager = StateManager(
-        max_history_length=settings.max_history_length,
         cleanup_hours=settings.user_state_cleanup_hours
     )
     logger.info("✓ State manager initialized")

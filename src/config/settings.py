@@ -1,7 +1,5 @@
 """Application settings management."""
 
-import os
-from typing import Optional
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, validator
@@ -56,11 +54,6 @@ class Settings(BaseSettings):
         default=4000,
         gt=0,
         description="Maximum message length from user"
-    )
-    max_history_length: int = Field(
-        default=10,
-        gt=0,
-        description="Maximum conversation history length"
     )
     user_state_cleanup_hours: int = Field(
         default=24,
