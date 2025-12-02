@@ -1,6 +1,6 @@
 """Integration layer between Telegram bot and LLM API."""
 
-from ..llm import YandexLLMClient, RickMode, ModePromptBuilder, build_rick_prompt, ResponseProcessor
+from ..llm import YandexLLMClient, RickMode, build_rick_prompt, ResponseProcessor
 from ..llm.modes import build_mode_prompt
 from .state_manager import StateManager
 from ..config import get_logger
@@ -62,21 +62,22 @@ class LLMIntegration:
         try:
             response = await self.llm_client.send_prompt(messages)
             
-            # Extract text from response
+            # Extract raw text from response (техническое извлечение из API Yandex)
             response_text = self.response_processor.extract_text(response)
             
-            # Get mode prefix and format response
-            mode_prefix = ModePromptBuilder.get_mode_prefix(current_mode)
-            formatted_response = f"{mode_prefix}{response_text}".strip()
+            # Log original model response
+            logger.info(f"Original model response for user {user_id}: {response_text[:200]}...")
+            logger.debug(f"Full original response for user {user_id}: {response_text}")
             
-            # Log usage info
+            # Get usage info для логирования (НЕ добавляем в ответ)
             usage = self.response_processor.get_usage_info(response)
             if usage:
-                logger.debug(f"Token usage for user {user_id}: {usage}")
+                logger.info(f"Token usage for user {user_id}: prompt={usage.get('inputTextTokens', 0)}, "
+                           f"completion={usage.get('completionTokens', 0)}, "
+                           f"total={usage.get('totalTokens', 0)}")
             
-            logger.info(f"Generated response for user {user_id}: {len(formatted_response)} chars")
-            
-            return formatted_response
+            # Отправляем RAW ответ от модели без какой-либо обработки
+            return response_text
             
         except Exception as e:
             logger.error(f"Failed to process message for user {user_id}: {e}", exc_info=True)

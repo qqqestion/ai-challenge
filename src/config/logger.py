@@ -67,8 +67,13 @@ def setup_logger(
         file_handler.setFormatter(json_formatter)
         logger.addHandler(file_handler)
     
-    # Prevent propagation to root logger
+    # Don't propagate to root logger (to avoid duplicate logs)
+    # But child loggers SHOULD propagate to this logger
     logger.propagate = False
+    
+    # Set logging level for the entire 'rick_bot' hierarchy
+    # This ensures all child loggers (e.g., 'rick_bot.llm.client') inherit the level
+    logging.getLogger("rick_bot").setLevel(level)
     
     return logger
 
@@ -77,10 +82,32 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     """Get logger instance.
     
     Args:
-        name: Logger name (defaults to 'rick_bot')
+        name: Logger name (will be prefixed with 'rick_bot' if not already)
         
     Returns:
-        Logger instance
+        Logger instance that inherits from rick_bot parent logger
     """
-    return logging.getLogger(name or "rick_bot")
+    # If name is provided, make it a child of rick_bot
+    if name and name != "rick_bot":
+        # Extract just the module name (e.g., "src.bot.llm_integration" -> "bot.llm_integration")
+        module_parts = name.split(".")
+        if module_parts[0] == "src":
+            module_parts = module_parts[1:]  # Remove 'src' prefix
+        
+        # Create child logger name under rick_bot hierarchy
+        child_name = ".".join(module_parts)
+        logger_name = f"rick_bot.{child_name}"
+    else:
+        logger_name = "rick_bot"
+    
+    logger = logging.getLogger(logger_name)
+    
+    # Child loggers should propagate to parent
+    if logger_name != "rick_bot":
+        logger.propagate = True
+        # Don't set handlers on child loggers - they'll use parent's handlers
+        if not logger.handlers:
+            logger.handlers = []
+    
+    return logger
 

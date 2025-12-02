@@ -4,7 +4,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
 from ..llm.modes import RickMode, ModePromptBuilder
-from ..llm.prompts import format_mode_switch_message
 from ..config import get_logger
 
 logger = get_logger(__name__)
@@ -28,12 +27,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Только не задавай тупых вопросов, ладно? Хотя... *urp* кого я обманываю, 
 ты всё равно их зададешь.
 
-🎭 У меня есть разные режимы общения - используй /mode чтобы посмотреть список.
-
 Команды:
 /start - это сообщение
 /help - справка
-/mode - режимы диалога
 /reset - очистить историю
 
 Wubba Lubba Dub Dub! 🧪"""
@@ -56,15 +52,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Просто пиши мне сообщения - я отвечу. Иногда саркастично, иногда полезно, 
 всегда гениально.
 
-🎭 **Режимы диалога:**
-/mode - показать все режимы
-/normal - обычный Рик
-/science - научные объяснения  
-/roast - максимальный сарказм
-/lab - практические советы
-/drunk - хаотичный режим
-/philosopher - философский режим
-
 ⚙️ **Команды:**
 /start - начать заново
 /help - эта справка
@@ -73,8 +60,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 **Советы:**
 • Я помню контекст разговора
 • Чем конкретнее вопрос, тем лучше ответ
-• В разных режимах я отвечаю по-разному
-• Не бойся менять режимы
 
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
     
@@ -82,25 +67,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mode command - show current mode and available modes.
+    """Handle /mode command - show current mode.
     
     Args:
         update: Telegram update object
         context: Bot context
     """
     user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
+    logger.info(f"User {user_id} checking mode")
     
-    current_mode = state_manager.get_user_mode(user_id)
-    current_desc = ModePromptBuilder.get_mode_description(current_mode)
-    
-    logger.info(f"User {user_id} checking modes (current: {current_mode.value})")
-    
-    message = f"""🎭 **Текущий режим:** {current_desc}
+    message = f"""🎭 {ModePromptBuilder.get_mode_description(RickMode.NORMAL)}
 
-{ModePromptBuilder.get_all_modes_info()}
-
-*urp* Выбирай режим и давай поговорим."""
+*urp* Я всегда в этом режиме. Баланс сарказма и знаний, Морти."""
     
     await update.message.reply_text(message)
 
@@ -122,62 +100,6 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *burp* Надеюсь следующий разговор будет поинтереснее."""
     
     await update.message.reply_text(reset_message)
-
-
-async def change_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: RickMode):
-    """Handle mode change commands.
-    
-    Args:
-        update: Telegram update object
-        context: Bot context
-        mode: New Rick mode to set
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    
-    old_mode = state_manager.get_user_mode(user_id)
-    state_manager.set_user_mode(user_id, mode)
-    
-    logger.info(f"User {user_id} changed mode: {old_mode.value} -> {mode.value}")
-    
-    # Get mode-specific confirmation message
-    confirmation = format_mode_switch_message(mode.value)
-    mode_desc = ModePromptBuilder.get_mode_description(mode)
-    
-    message = f"{mode_desc}\n\n{confirmation}"
-    
-    await update.message.reply_text(message)
-
-
-# Individual mode command handlers
-async def normal_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /normal command."""
-    await change_mode_command(update, context, RickMode.NORMAL)
-
-
-async def science_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /science command."""
-    await change_mode_command(update, context, RickMode.SCIENCE)
-
-
-async def roast_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /roast command."""
-    await change_mode_command(update, context, RickMode.ROAST)
-
-
-async def lab_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /lab command."""
-    await change_mode_command(update, context, RickMode.LAB)
-
-
-async def drunk_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /drunk command."""
-    await change_mode_command(update, context, RickMode.DRUNK)
-
-
-async def philosopher_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /philosopher command."""
-    await change_mode_command(update, context, RickMode.PHILOSOPHER)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -13,12 +13,6 @@ from .handlers import (
     help_command,
     mode_command,
     reset_command,
-    normal_mode_command,
-    science_mode_command,
-    roast_mode_command,
-    lab_mode_command,
-    drunk_mode_command,
-    philosopher_mode_command,
     handle_message,
     error_handler
 )
@@ -72,14 +66,6 @@ class RickBot:
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("mode", mode_command))
         app.add_handler(CommandHandler("reset", reset_command))
-        
-        # Mode command handlers
-        app.add_handler(CommandHandler("normal", normal_mode_command))
-        app.add_handler(CommandHandler("science", science_mode_command))
-        app.add_handler(CommandHandler("roast", roast_mode_command))
-        app.add_handler(CommandHandler("lab", lab_mode_command))
-        app.add_handler(CommandHandler("drunk", drunk_mode_command))
-        app.add_handler(CommandHandler("philosopher", philosopher_mode_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
