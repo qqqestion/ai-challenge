@@ -3,7 +3,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
-from ..llm.modes import RickMode, ModePromptBuilder
 from ..config import get_logger
 
 logger = get_logger(__name__)
@@ -30,7 +29,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Команды:
 /start - это сообщение
 /help - справка
-/reset - очистить историю
 
 Wubba Lubba Dub Dub! 🧪"""
     
@@ -55,7 +53,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚙️ **Команды:**
 /start - начать заново
 /help - эта справка
-/reset - очистить историю разговора
 
 💡 **Советы:**
 • Я помню контекст разговора
@@ -64,42 +61,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
     
     await update.message.reply_text(help_text)
-
-
-async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mode command - show current mode.
-    
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    logger.info(f"User {user_id} checking mode")
-    
-    message = f"""🎭 {ModePromptBuilder.get_mode_description(RickMode.NORMAL)}
-
-*urp* Я всегда в этом режиме. Баланс сарказма и знаний, Морти."""
-    
-    await update.message.reply_text(message)
-
-
-async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /reset command - reset conversation history.
-    
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    
-    state_manager.reset_user_state(user_id)
-    logger.info(f"User {user_id} reset conversation history")
-    
-    reset_message = """*urp* Окей, я стёр всю нашу историю. Чистый лист. 
-*burp* Надеюсь следующий разговор будет поинтереснее."""
-    
-    await update.message.reply_text(reset_message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,7 +89,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_message = """*urp* Чёрт, что-то пошло не так. Может быть мои системы 
 перегружены, или просто вселенная решила посмеяться надо мной.
 
-Попробуй ещё раз, или используй /reset если проблема повторяется."""
+Попробуй ещё раз."""
         
         await update.message.reply_text(error_message)
 

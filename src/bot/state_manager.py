@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict
-from ..llm.modes import RickMode
 from ..config import get_logger
 
 logger = get_logger(__name__)
@@ -14,7 +13,6 @@ class UserState:
     """State for individual user conversation."""
     
     user_id: int
-    current_mode: RickMode = RickMode.NORMAL
     last_activity: datetime = field(default_factory=datetime.now)
     
     def update_activity(self):
@@ -51,42 +49,6 @@ class StateManager:
         state = self._states[user_id]
         state.update_activity()
         return state
-    
-    def get_user_mode(self, user_id: int) -> RickMode:
-        """Get current conversation mode for user.
-        
-        Args:
-            user_id: Telegram user ID
-            
-        Returns:
-            Current Rick mode
-        """
-        state = self.get_user_state(user_id)
-        return state.current_mode
-    
-    def set_user_mode(self, user_id: int, mode: RickMode):
-        """Set conversation mode for user.
-        
-        Args:
-            user_id: Telegram user ID
-            mode: New Rick mode
-        """
-        state = self.get_user_state(user_id)
-        old_mode = state.current_mode
-        state.current_mode = mode
-        logger.info(f"User {user_id} mode changed: {old_mode.value} -> {mode.value}")
-    
-    def reset_user_state(self, user_id: int):
-        """Reset state for user.
-        
-        Args:
-            user_id: Telegram user ID
-        """
-        if user_id in self._states:
-            logger.info(f"Resetting state for user {user_id}")
-            self._states[user_id] = UserState(user_id=user_id)
-        else:
-            logger.debug(f"No state to reset for user {user_id}")
     
     def cleanup_old_states(self):
         """Clean up inactive user states."""

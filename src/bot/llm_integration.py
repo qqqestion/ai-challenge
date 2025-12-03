@@ -42,11 +42,12 @@ class LLMIntegration:
         Raises:
             Exception: If LLM API call fails
         """
-        # Get user state and current mode
-        user_state = self.state_manager.get_user_state(user_id)
-        current_mode = user_state.current_mode
+        # Update user activity (get_user_state updates last_activity)
+        _ = self.state_manager.get_user_state(user_id)
         
-        logger.info(f"Processing message for user {user_id} in mode {current_mode.value}")
+        # Use default mode (NORMAL)
+        current_mode = RickMode.NORMAL
+        logger.info(f"Processing message for user {user_id}")
         
         # Build mode-specific prompt
         system_prompt, user_message = build_mode_prompt(current_mode, message)
@@ -82,36 +83,6 @@ class LLMIntegration:
         except Exception as e:
             logger.error(f"Failed to process message for user {user_id}: {e}", exc_info=True)
             raise
-    
-    async def change_mode(self, user_id: int, new_mode: RickMode) -> str:
-        """Change conversation mode for user.
-        
-        Args:
-            user_id: Telegram user ID
-            new_mode: New Rick mode
-            
-        Returns:
-            Confirmation message in new mode style
-        """
-        old_mode = self.state_manager.get_user_mode(user_id)
-        self.state_manager.set_user_mode(user_id, new_mode)
-        
-        logger.info(f"User {user_id} mode changed: {old_mode.value} -> {new_mode.value}")
-        
-        # Generate confirmation in new mode style
-        from ..llm.prompts import format_mode_switch_message
-        confirmation = format_mode_switch_message(new_mode.value)
-        
-        return confirmation
-    
-    async def reset_conversation(self, user_id: int):
-        """Reset conversation state for user.
-        
-        Args:
-            user_id: Telegram user ID
-        """
-        self.state_manager.reset_user_state(user_id)
-        logger.info(f"Conversation reset for user {user_id}")
     
     async def cleanup(self):
         """Cleanup resources."""
