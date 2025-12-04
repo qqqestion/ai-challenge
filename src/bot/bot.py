@@ -11,6 +11,7 @@ from .state_manager import StateManager
 from .handlers import (
     start_command,
     help_command,
+    plan_vacation_command,
     handle_message,
     error_handler
 )
@@ -62,6 +63,7 @@ class RickBot:
         # Command handlers
         app.add_handler(CommandHandler("start", start_command))
         app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(CommandHandler("plan_vacation", plan_vacation_command))
         
         # Message handler (for non-command messages)
         app.add_handler(

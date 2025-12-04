@@ -2,10 +2,13 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict
+from typing import Dict, List
 from ..config import get_logger
 
 logger = get_logger(__name__)
+
+# Maximum number of messages in history (10 pairs of user-assistant)
+MAX_HISTORY_MESSAGES = 20
 
 
 @dataclass
@@ -14,10 +17,40 @@ class UserState:
     
     user_id: int
     last_activity: datetime = field(default_factory=datetime.now)
+    message_history: List[Dict[str, str]] = field(default_factory=list)
     
     def update_activity(self):
         """Update last activity timestamp."""
         self.last_activity = datetime.now()
+    
+    def add_message(self, role: str, text: str):
+        """Add message to history.
+        
+        Args:
+            role: Message role ('user' or 'assistant')
+            text: Message text
+        """
+        self.message_history.append({"role": role, "text": text})
+        
+        # Remove oldest messages if limit exceeded
+        if len(self.message_history) > MAX_HISTORY_MESSAGES:
+            # Remove oldest pair (user + assistant) = 2 messages
+            messages_to_remove = len(self.message_history) - MAX_HISTORY_MESSAGES
+            self.message_history = self.message_history[messages_to_remove:]
+            logger.debug(f"Trimmed history for user {self.user_id}: removed {messages_to_remove} oldest messages")
+    
+    def clear_history(self):
+        """Clear message history."""
+        self.message_history.clear()
+        logger.info(f"Cleared history for user {self.user_id}")
+    
+    def get_history(self) -> List[Dict[str, str]]:
+        """Get conversation history.
+        
+        Returns:
+            List of message dictionaries with 'role' and 'text' keys
+        """
+        return self.message_history.copy()
 
 
 class StateManager:
@@ -66,13 +99,25 @@ class StateManager:
         if users_to_remove:
             logger.info(f"Cleaned up {len(users_to_remove)} inactive states")
     
+    def clear_user_history(self, user_id: int):
+        """Clear message history for specific user.
+        
+        Args:
+            user_id: Telegram user ID
+        """
+        if user_id in self._states:
+            self._states[user_id].clear_history()
+            logger.info(f"Cleared history for user {user_id}")
+    
     def get_stats(self) -> Dict:
         """Get statistics about current states.
         
         Returns:
             Dictionary with statistics
         """
+        total_messages = sum(len(state.message_history) for state in self._states.values())
         return {
-            "total_users": len(self._states)
+            "total_users": len(self._states),
+            "total_messages_in_history": total_messages
         }
 

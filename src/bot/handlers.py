@@ -18,6 +18,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"User {user.id} ({user.username}) started the bot")
     
+    # Clear user conversation history
+    state_manager = context.bot_data.get("state_manager")
+    if state_manager:
+        state_manager.clear_user_history(user.id)
+    
     welcome_message = """*burp* Слушай, я Рик Санчез, самый гениальный ученый во всей 
 чёртовой мультивселенной. *urp* И по какой-то причине я застрял здесь, отвечая на твои 
 вопросы.
@@ -29,6 +34,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Команды:
 /start - это сообщение
 /help - справка
+/plan_vacation - спланировать отпуск
 
 Wubba Lubba Dub Dub! 🧪"""
     
@@ -53,6 +59,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚙️ **Команды:**
 /start - начать заново
 /help - эта справка
+/plan_vacation - спланировать отпуск
 
 💡 **Советы:**
 • Я помню контекст разговора
@@ -61,6 +68,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
     
     await update.message.reply_text(help_text)
+
+
+async def plan_vacation_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /plan_vacation command.
+    
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    logger.info(f"User {update.effective_user.id} requested plan_vacation")
+    
+    message = "Окей, Морти, куда ты хочешь отправиться?"
+    
+    await update.message.reply_text(message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
