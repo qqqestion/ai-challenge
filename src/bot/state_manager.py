@@ -3,12 +3,18 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List
+from ..llm.modes import RickMode
 from ..config import get_logger
 
 logger = get_logger(__name__)
 
-# Maximum number of messages in history (10 pairs of user-assistant)
-MAX_HISTORY_MESSAGES = 20
+# Maximum number of messages in history (25 pairs of user-assistant)
+MAX_HISTORY_MESSAGES = 50
+
+
+def _default_mode() -> RickMode:
+    """Default mode factory function."""
+    return RickMode.NORMAL
 
 
 @dataclass
@@ -18,6 +24,7 @@ class UserState:
     user_id: int
     last_activity: datetime = field(default_factory=datetime.now)
     message_history: List[Dict[str, str]] = field(default_factory=list)
+    current_mode: RickMode = field(default_factory=_default_mode)
     
     def update_activity(self):
         """Update last activity timestamp."""
@@ -109,9 +116,32 @@ class StateManager:
             self._states[user_id].clear_history()
             logger.info(f"Cleared history for user {user_id}")
     
+    def set_user_mode(self, user_id: int, mode: RickMode):
+        """Set conversation mode for specific user.
+
+        Args:
+            user_id: Telegram user ID
+            mode: Conversation mode to set
+        """
+        user_state = self.get_user_state(user_id)
+        user_state.current_mode = mode
+        logger.info(f"Set mode {mode.value} for user {user_id}")
+
+    def get_user_mode(self, user_id: int) -> RickMode:
+        """Get current conversation mode for specific user.
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            Current conversation mode
+        """
+        user_state = self.get_user_state(user_id)
+        return user_state.current_mode
+
     def get_stats(self) -> Dict:
         """Get statistics about current states.
-        
+
         Returns:
             Dictionary with statistics
         """

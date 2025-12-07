@@ -102,8 +102,7 @@ class YandexLLMClient:
         # Get model with configuration
         model = self.sdk.models.completions(self.model_name).configure(
             temperature=temperature or self.temperature,
-            max_tokens=max_tokens or self.max_tokens,
-            response_format="json"
+            max_tokens=max_tokens or self.max_tokens
         )
         
         try:

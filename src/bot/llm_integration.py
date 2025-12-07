@@ -46,12 +46,14 @@ class LLMIntegration:
         user_state = self.state_manager.get_user_state(user_id)
         conversation_history = user_state.get_history()
         
-        # Use default mode (NORMAL)
-        current_mode = RickMode.NORMAL
-        logger.info(f"Processing message for user {user_id} (history: {len(conversation_history)} messages)")
+        # Get current mode from user state
+        current_mode = self.state_manager.get_user_mode(user_id)
+        logger.info(f"Processing message for user {user_id} (mode: {current_mode.value}, history: {len(conversation_history)} messages)")
         
         # Build mode-specific prompt
         system_prompt, user_message = build_mode_prompt(current_mode, message)
+
+        logger.info(f"System prompt: {system_prompt}")
         
         # Build complete prompt structure with history
         messages = build_rick_prompt(

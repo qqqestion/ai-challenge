@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
 from ..config import get_logger
+from ..llm.modes import RickMode
 
 logger = get_logger(__name__)
 
@@ -35,6 +36,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start - это сообщение
 /help - справка
 /plan_vacation - спланировать отпуск
+/mode_rick - режим Рика
+/mode_morty - режим Морти
 
 Wubba Lubba Dub Dub! 🧪"""
     
@@ -60,10 +63,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start - начать заново
 /help - эта справка
 /plan_vacation - спланировать отпуск
+/mode_rick - переключиться на режим Рика
+/mode_morty - переключиться на режим Морти
 
 💡 **Советы:**
 • Я помню контекст разговора
 • Чем конкретнее вопрос, тем лучше ответ
+• История сообщений сохраняется при смене режима
 
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
     
@@ -80,6 +86,48 @@ async def plan_vacation_command(update: Update, context: ContextTypes.DEFAULT_TY
     logger.info(f"User {update.effective_user.id} requested plan_vacation")
     
     message = "Окей, Морти, куда ты хочешь отправиться?"
+    
+    await update.message.reply_text(message)
+
+
+async def mode_rick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /mode_rick command.
+    
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user = update.effective_user
+    logger.info(f"User {user.id} switched to Rick mode")
+    
+    state_manager = context.bot_data.get("state_manager")
+    if state_manager:
+        state_manager.set_user_mode(user.id, RickMode.NORMAL)
+    
+    message = """*burp* Окей, Морти, теперь я в режиме Рика. 
+    
+Готов к саркастичным ответам и гениальным решениям. *urp*"""
+    
+    await update.message.reply_text(message)
+
+
+async def mode_morty_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /mode_morty command.
+    
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user = update.effective_user
+    logger.info(f"User {user.id} switched to Morty mode")
+    
+    state_manager = context.bot_data.get("state_manager")
+    if state_manager:
+        state_manager.set_user_mode(user.id, RickMode.MORTY)
+    
+    message = """О, о-окей! Теперь я в режиме Морти. 
+    
+Готов помочь тебе дружелюбно и открыто!"""
     
     await update.message.reply_text(message)
 
