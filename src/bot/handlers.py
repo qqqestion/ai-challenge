@@ -3,8 +3,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
-from ..llm.modes import RickMode, ModePromptBuilder
-from ..llm.prompts import format_mode_switch_message
 from ..config import get_logger
 
 logger = get_logger(__name__)
@@ -28,12 +26,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Только не задавай тупых вопросов, ладно? Хотя... *urp* кого я обманываю, 
 ты всё равно их зададешь.
 
-🎭 У меня есть разные режимы общения - используй /mode чтобы посмотреть список.
+🌡️ Можешь настроить температуру моих ответов через /temperature
 
 Команды:
 /start - это сообщение
 /help - справка
-/mode - режимы диалога
+/commands - список всех команд
+/temperature - настройка температуры ответов
 /reset - очистить историю
 
 Wubba Lubba Dub Dub! 🧪"""
@@ -56,14 +55,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Просто пиши мне сообщения - я отвечу. Иногда саркастично, иногда полезно, 
 всегда гениально.
 
-🎭 **Режимы диалога:**
-/mode - показать все режимы
-/normal - обычный Рик
-/science - научные объяснения  
-/roast - максимальный сарказм
-/lab - практические советы
-/drunk - хаотичный режим
-/philosopher - философский режим
+🌡️ **Настройка температуры:**
+/temperature - показать текущую температуру
+/temperature 0.0 - максимальная точность
+/temperature 0.7 - баланс креативности
+/temperature 2.0 - максимальная креативность
 
 ⚙️ **Команды:**
 /start - начать заново
@@ -73,36 +69,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 **Советы:**
 • Я помню контекст разговора
 • Чем конкретнее вопрос, тем лучше ответ
-• В разных режимах я отвечаю по-разному
-• Не бойся менять режимы
+• Температура влияет на креативность ответов
 
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
     
     await update.message.reply_text(help_text)
-
-
-async def mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /mode command - show current mode and available modes.
-    
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    
-    current_mode = state_manager.get_user_mode(user_id)
-    current_desc = ModePromptBuilder.get_mode_description(current_mode)
-    
-    logger.info(f"User {user_id} checking modes (current: {current_mode.value})")
-    
-    message = f"""🎭 **Текущий режим:** {current_desc}
-
-{ModePromptBuilder.get_all_modes_info()}
-
-*urp* Выбирай режим и давай поговорим."""
-    
-    await update.message.reply_text(message)
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -124,60 +95,77 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reset_message)
 
 
-async def change_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: RickMode):
-    """Handle mode change commands.
+async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /temperature command - set LLM temperature for user.
     
     Args:
         update: Telegram update object
         context: Bot context
-        mode: New Rick mode to set
     """
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
     
-    old_mode = state_manager.get_user_mode(user_id)
-    state_manager.set_user_mode(user_id, mode)
+    # Get temperature argument
+    if not context.args:
+        # Show current temperature
+        current_temp = state_manager.get_user_temperature(user_id)
+        message = f"""🌡️ **Текущая температура:** {current_temp}
+
+Используй: `/temperature <значение>` чтобы изменить
+Например: `/temperature 0.7`"""
+        
+        await update.message.reply_text(message)
+        return
     
-    logger.info(f"User {user_id} changed mode: {old_mode.value} -> {mode.value}")
-    
-    # Get mode-specific confirmation message
-    confirmation = format_mode_switch_message(mode.value)
-    mode_desc = ModePromptBuilder.get_mode_description(mode)
-    
-    message = f"{mode_desc}\n\n{confirmation}"
-    
-    await update.message.reply_text(message)
+    # Parse temperature value
+    try:
+        temperature = float(context.args[0])
+        
+        # Validate range
+        if not (0.0 <= temperature <= 2.0):
+            error_message = """*urp* Температура должна быть от 0.0 до 2.0!"""
+            
+            await update.message.reply_text(error_message)
+            return
+        
+        # Set temperature
+        old_temp = state_manager.get_user_temperature(user_id)
+        state_manager.set_user_temperature(user_id, temperature)
+        
+        logger.info(f"User {user_id} set temperature: {old_temp} -> {temperature}")
+        
+        # Format response based on temperature value
+        if temperature == 0.0:
+            temp_desc = "максимальная точность и детерминированность"
+        elif temperature <= 0.3:
+            temp_desc = "низкая креативность, высокая точность"
+        elif temperature <= 0.7:
+            temp_desc = "баланс между точностью и креативностью"
+        else:
+            temp_desc = "высокая креативность и разнообразие"
+        
+        message = f"""🌡️ **Температура установлена:** {temperature}
 
+*urp* Теперь мои ответы будут с {temp_desc}.
 
-# Individual mode command handlers
-async def normal_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /normal command."""
-    await change_mode_command(update, context, RickMode.NORMAL)
+Старая температура: {old_temp}
+Новая температура: {temperature}
 
+Используй `/temperature` без параметров чтобы посмотреть текущее значение."""
+        
+        await update.message.reply_text(message)
+        
+    except ValueError:
+        error_message = """*burp* Неверный формат температуры!
 
-async def science_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /science command."""
-    await change_mode_command(update, context, RickMode.SCIENCE)
+Температура должна быть числом от 0.0 до 2.0.
 
-
-async def roast_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /roast command."""
-    await change_mode_command(update, context, RickMode.ROAST)
-
-
-async def lab_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /lab command."""
-    await change_mode_command(update, context, RickMode.LAB)
-
-
-async def drunk_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /drunk command."""
-    await change_mode_command(update, context, RickMode.DRUNK)
-
-
-async def philosopher_mode_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /philosopher command."""
-    await change_mode_command(update, context, RickMode.PHILOSOPHER)
+Примеры:
+/temperature 0.0
+/temperature 0.7
+/temperature 2.0"""
+        
+        await update.message.reply_text(error_message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -209,6 +197,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Попробуй ещё раз, или используй /reset если проблема повторяется."""
         
         await update.message.reply_text(error_message)
+
+
+async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /commands command - show list of all available commands.
+    
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} requested commands list")
+    
+    commands_text = """📋 **Список всех команд:**
+
+🔹 **Основные команды:**
+/start - начать работу с ботом
+/help - подробная справка
+/commands - этот список команд
+
+🌡️ **Настройки:**
+/temperature - показать текущую температуру
+/temperature <0.0-2.0> - установить температуру ответов
+
+⚙️ **Управление:**
+/reset - очистить историю разговора
+
+💬 **Использование:**
+Просто напиши любое сообщение (не команду) - я отвечу с установленной температурой.
+
+*urp* Всё понятно? Используй команды и наслаждайся общением!"""
+    
+    await update.message.reply_text(commands_text)
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

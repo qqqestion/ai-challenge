@@ -40,6 +40,7 @@ async def initialize_application():
     llm_client = YandexLLMClient(
         api_key=settings.yandex_api_key,
         folder_id=settings.yandex_folder_id,
+        model_name=settings.yandex_model_name,
         model_uri=settings.yandex_model_uri,
         endpoint=settings.yandex_llm_endpoint,
         temperature=settings.llm_temperature,

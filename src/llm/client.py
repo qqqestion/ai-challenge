@@ -15,9 +15,10 @@ class YandexLLMClient:
         self,
         api_key: str,
         folder_id: str,
+        model_name: str,
         model_uri: str,
         endpoint: str,
-        temperature: float = 0.8,
+        temperature: float,
         max_tokens: int = 2000,
         timeout: float = 60.0,
         max_retries: int = 3,
@@ -28,9 +29,10 @@ class YandexLLMClient:
         Args:
             api_key: Yandex Cloud API key
             folder_id: Yandex Cloud folder ID
-            model_uri: Model URI (e.g., gpt://folder_id/yandexgpt-lite/latest)
+            model_name: Model name (e.g., yandexgpt, yandexgpt-lite) - REQUIRED
+            model_uri: Model URI (deprecated, kept for compatibility)
             endpoint: API endpoint URL (not used with SDK, kept for compatibility)
-            temperature: Sampling temperature (0.0-1.0)
+            temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Maximum tokens in response
             timeout: Request timeout in seconds
             max_retries: Maximum number of retry attempts (not used with SDK)
@@ -38,10 +40,13 @@ class YandexLLMClient:
         """
         self.api_key = api_key
         self.folder_id = folder_id
+        self.model_name = model_name
         self.model_uri = model_uri
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
+        
+        logger.info(f"YandexLLMClient initialized with model: {model_name}, temperature: {temperature}")
         
         if not ssl_verify:
             logger.warning("=" * 60)
@@ -58,16 +63,6 @@ class YandexLLMClient:
             auth=api_key
         )
         
-        # Extract model name from model_uri (e.g., "gpt://folder/yandexgpt/latest" -> "yandexgpt")
-        # Model URI format: gpt://folder_id/model_name/version
-        model_name = "yandexgpt"  # default
-        if model_uri and "://" in model_uri:
-            parts = model_uri.split("://")[1].split("/")
-            if len(parts) >= 2:
-                model_name = parts[1]
-        
-        logger.debug(f"Using model: {model_name}")
-        self.model_name = model_name
         self._model = None
     
     def _get_model(self):
@@ -81,14 +76,14 @@ class YandexLLMClient:
     async def send_prompt(
         self,
         messages: List[Dict[str, str]],
-        temperature: Optional[float] = None,
+        temperature: float,
         max_tokens: Optional[int] = None
     ) -> Dict:
         """Send prompt to Yandex LLM API using SDK.
         
         Args:
             messages: List of message dictionaries with 'role' and 'text' keys
-            temperature: Override default temperature
+            temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Override default max_tokens
             
         Returns:
@@ -97,11 +92,11 @@ class YandexLLMClient:
         Raises:
             Exception: If API request fails
         """
-        logger.debug(f"Sending request to Yandex LLM API: {len(messages)} messages")
+        logger.info(f"Sending request to Yandex LLM API: {len(messages)} messages, temperature: {temperature}")
         
         # Get model with configuration
         model = self.sdk.models.completions(self.model_name).configure(
-            temperature=temperature or self.temperature,
+            temperature=temperature,
             max_tokens=max_tokens or self.max_tokens
         )
         

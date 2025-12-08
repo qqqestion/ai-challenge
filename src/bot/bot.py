@@ -11,14 +11,9 @@ from .state_manager import StateManager
 from .handlers import (
     start_command,
     help_command,
-    mode_command,
     reset_command,
-    normal_mode_command,
-    science_mode_command,
-    roast_mode_command,
-    lab_mode_command,
-    drunk_mode_command,
-    philosopher_mode_command,
+    temperature_command,
+    commands_command,
     handle_message,
     error_handler
 )
@@ -70,16 +65,9 @@ class RickBot:
         # Command handlers
         app.add_handler(CommandHandler("start", start_command))
         app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(CommandHandler("mode", mode_command))
+        app.add_handler(CommandHandler("commands", commands_command))
         app.add_handler(CommandHandler("reset", reset_command))
-        
-        # Mode command handlers
-        app.add_handler(CommandHandler("normal", normal_mode_command))
-        app.add_handler(CommandHandler("science", science_mode_command))
-        app.add_handler(CommandHandler("roast", roast_mode_command))
-        app.add_handler(CommandHandler("lab", lab_mode_command))
-        app.add_handler(CommandHandler("drunk", drunk_mode_command))
-        app.add_handler(CommandHandler("philosopher", philosopher_mode_command))
+        app.add_handler(CommandHandler("temperature", temperature_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -94,6 +82,24 @@ class RickBot:
         
         logger.info("All handlers registered")
     
+    async def _set_bot_commands(self):
+        """Set bot commands menu for Telegram."""
+        from telegram import BotCommand
+        
+        commands = [
+            BotCommand("start", "Начать работу с ботом"),
+            BotCommand("help", "Подробная справка"),
+            BotCommand("commands", "Список всех команд"),
+            BotCommand("temperature", "Настройка температуры"),
+            BotCommand("reset", "Очистить историю"),
+        ]
+        
+        try:
+            await self.application.bot.set_my_commands(commands)
+            logger.info("Bot commands menu set successfully")
+        except Exception as e:
+            logger.warning(f"Failed to set bot commands menu: {e}")
+    
     async def start(self):
         """Start the bot."""
         logger.info("Starting Rick Bot...")
@@ -107,6 +113,9 @@ class RickBot:
             bot_info = await self.application.bot.get_me()
             logger.info(f"Bot username: @{bot_info.username}")
             logger.info(f"Bot name: {bot_info.first_name}")
+            
+            # Set bot commands menu
+            await self._set_bot_commands()
         except Exception as e:
             logger.warning(f"Could not get bot info: {e}")
             logger.info("Bot will continue running...")

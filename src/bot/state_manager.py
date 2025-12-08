@@ -15,6 +15,7 @@ class UserState:
     
     user_id: int
     current_mode: RickMode = RickMode.NORMAL
+    temperature: float = 0.3
     last_activity: datetime = field(default_factory=datetime.now)
     
     def update_activity(self):
@@ -52,29 +53,32 @@ class StateManager:
         state.update_activity()
         return state
     
-    def get_user_mode(self, user_id: int) -> RickMode:
-        """Get current conversation mode for user.
+    def get_user_temperature(self, user_id: int) -> float:
+        """Get current temperature setting for user.
         
         Args:
             user_id: Telegram user ID
             
         Returns:
-            Current Rick mode
+            Current temperature value (default: 0.3)
         """
         state = self.get_user_state(user_id)
-        return state.current_mode
+        return state.temperature
     
-    def set_user_mode(self, user_id: int, mode: RickMode):
-        """Set conversation mode for user.
+    def set_user_temperature(self, user_id: int, temperature: float):
+        """Set temperature for user.
         
         Args:
             user_id: Telegram user ID
-            mode: New Rick mode
+            temperature: Temperature value (0.0-2.0)
         """
+        if not (0.0 <= temperature <= 2.0):
+            raise ValueError("Temperature must be between 0.0 and 2.0")
+        
         state = self.get_user_state(user_id)
-        old_mode = state.current_mode
-        state.current_mode = mode
-        logger.info(f"User {user_id} mode changed: {old_mode.value} -> {mode.value}")
+        old_temperature = state.temperature
+        state.temperature = temperature
+        logger.info(f"User {user_id} temperature changed: {old_temperature} -> {temperature}")
     
     def reset_user_state(self, user_id: int):
         """Reset state for user.

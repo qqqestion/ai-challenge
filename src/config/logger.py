@@ -17,7 +17,7 @@ def setup_logger(
     """Setup application logger with console and file handlers.
     
     Args:
-        name: Logger name
+        name: Logger name (used for file naming)
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_to_file: Whether to log to file
         log_dir: Directory for log files
@@ -25,14 +25,15 @@ def setup_logger(
     Returns:
         Configured logger instance
     """
-    logger = logging.getLogger(name)
-    
-    # Clear existing handlers
-    logger.handlers.clear()
-    
     # Set log level
     level = getattr(logging, log_level.upper(), logging.INFO)
-    logger.setLevel(level)
+    
+    # Configure logger for 'src' package so all child loggers inherit handlers
+    src_logger = logging.getLogger("src")
+    src_logger.setLevel(level)
+    
+    # Clear existing handlers to avoid duplicates
+    src_logger.handlers.clear()
     
     # Console handler with colored output
     console_handler = logging.StreamHandler(sys.stdout)
@@ -44,7 +45,7 @@ def setup_logger(
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
+    src_logger.addHandler(console_handler)
     
     # File handler with rotation
     if log_to_file:
@@ -65,10 +66,16 @@ def setup_logger(
             datefmt="%Y-%m-%d %H:%M:%S"
         )
         file_handler.setFormatter(json_formatter)
-        logger.addHandler(file_handler)
+        src_logger.addHandler(file_handler)
     
-    # Prevent propagation to root logger
-    logger.propagate = False
+    # Prevent propagation to root logger to avoid third-party library logs
+    src_logger.propagate = False
+    
+    # Get the specific logger (will inherit handlers from src logger via propagation)
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    # Allow propagation to src logger so all child loggers use src handlers
+    logger.propagate = True
     
     return logger
 
@@ -78,9 +85,24 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     
     Args:
         name: Logger name (defaults to 'rick_bot')
+        If name starts with 'src.', it will inherit handlers from 'src' logger
         
     Returns:
         Logger instance
     """
-    return logging.getLogger(name or "rick_bot")
+    logger_name = name or "rick_bot"
+    logger = logging.getLogger(logger_name)
+    
+    # Ensure child loggers propagate to parent 'src' logger
+    # This allows all src.* loggers to use handlers from 'src' logger
+    if logger_name.startswith("src.") or logger_name == "src":
+        # Child loggers should propagate to parent
+        logger.propagate = True
+        # Set level to match parent if not already set
+        if logger.level == logging.NOTSET:
+            parent_logger = logging.getLogger("src")
+            if parent_logger.level != logging.NOTSET:
+                logger.setLevel(parent_logger.level)
+    
+    return logger
 

@@ -31,11 +31,6 @@ async def process_user_message(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
     
-    # Check for spam/flood (basic check)
-    user_state = state_manager.get_user_state(user_id)
-    if user_state.message_count > 100:  # Simple rate limit
-        logger.warning(f"User {user_id} might be spamming (message count: {user_state.message_count})")
-    
     try:
         # Process message through LLM integration
         response_text = await llm_integration.process_message(user_id, message_text)

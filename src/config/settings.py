@@ -23,9 +23,13 @@ class Settings(BaseSettings):
         ...,
         description="Yandex Cloud Folder ID"
     )
+    yandex_model_name: str = Field(
+        ...,
+        description="Yandex GPT Model Name (e.g., yandexgpt, yandexgpt-lite)"
+    )
     yandex_model_uri: str = Field(
         default="",
-        description="Yandex GPT Model URI (auto-generated from folder_id if not specified)"
+        description="Yandex GPT Model URI (deprecated, kept for compatibility)"
     )
     yandex_llm_endpoint: str = Field(
         default="https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
@@ -36,8 +40,8 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(
         default=0.8,
         ge=0.0,
-        le=1.0,
-        description="Temperature for LLM responses (0.0-1.0)"
+        le=2.0,
+        description="Temperature for LLM responses (0.0-2.0)"
     )
     llm_max_tokens: int = Field(
         default=2000,
@@ -148,13 +152,23 @@ class Settings(BaseSettings):
         
         return v
     
-    @validator("yandex_model_uri")
-    def validate_model_uri(cls, v: str, values: dict) -> str:
-        """Validate and construct model URI if needed."""
-        if not v.startswith("gpt://"):
-            folder_id = values.get("yandex_folder_id", "")
-            if folder_id:
-                return f"gpt://{folder_id}/yandexgpt-lite/latest"
+    @validator("yandex_model_name")
+    def validate_model_name(cls, v: str) -> str:
+        """Validate Yandex model name."""
+        if not v or v == "your_yandex_model_name_here":
+            raise ValueError(
+                "YANDEX_MODEL_NAME не указан или содержит значение по умолчанию. "
+                "Укажите имя модели в .env файле (например: yandexgpt, yandexgpt-lite)."
+            )
+        
+        # Удаляем пробелы и проверяем что имя не пустое
+        v = v.strip()
+        if not v:
+            raise ValueError(
+                "YANDEX_MODEL_NAME не может быть пустым. "
+                "Укажите имя модели (например: yandexgpt, yandexgpt-lite)."
+            )
+        
         return v
 
 

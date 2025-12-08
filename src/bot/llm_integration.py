@@ -1,6 +1,6 @@
 """Integration layer between Telegram bot and LLM API."""
 
-from ..llm import YandexLLMClient, RickMode, ModePromptBuilder, build_rick_prompt, ResponseProcessor
+from ..llm import YandexLLMClient, RickMode, build_rick_prompt, ResponseProcessor
 from ..llm.modes import build_mode_prompt
 from .state_manager import StateManager
 from ..config import get_logger
@@ -42,14 +42,14 @@ class LLMIntegration:
         Raises:
             Exception: If LLM API call fails
         """
-        # Get user state and current mode
+        # Get user state and temperature
         user_state = self.state_manager.get_user_state(user_id)
-        current_mode = user_state.current_mode
+        user_temperature = user_state.temperature
         
-        logger.info(f"Processing message for user {user_id} in mode {current_mode.value}")
+        logger.info(f"Processing message for user {user_id} with temperature {user_temperature}")
         
-        # Build mode-specific prompt
-        system_prompt, user_message = build_mode_prompt(current_mode, message)
+        # Build prompt with NORMAL mode (only mode available)
+        system_prompt, user_message = build_mode_prompt(RickMode.NORMAL, message)
         
         # Build complete prompt structure (without history)
         messages = build_rick_prompt(
@@ -58,16 +58,18 @@ class LLMIntegration:
             conversation_history=None
         )
         
-        # Send to LLM API
+        # Send to LLM API with user-specific temperature
         try:
-            response = await self.llm_client.send_prompt(messages)
+            response = await self.llm_client.send_prompt(
+                messages,
+                temperature=user_temperature
+            )
             
             # Extract text from response
             response_text = self.response_processor.extract_text(response)
             
-            # Get mode prefix and format response
-            mode_prefix = ModePromptBuilder.get_mode_prefix(current_mode)
-            formatted_response = f"{mode_prefix}{response_text}".strip()
+            # Format response (no prefix needed for NORMAL mode)
+            formatted_response = response_text.strip()
             
             # Log usage info
             usage = self.response_processor.get_usage_info(response)
@@ -81,27 +83,6 @@ class LLMIntegration:
         except Exception as e:
             logger.error(f"Failed to process message for user {user_id}: {e}", exc_info=True)
             raise
-    
-    async def change_mode(self, user_id: int, new_mode: RickMode) -> str:
-        """Change conversation mode for user.
-        
-        Args:
-            user_id: Telegram user ID
-            new_mode: New Rick mode
-            
-        Returns:
-            Confirmation message in new mode style
-        """
-        old_mode = self.state_manager.get_user_mode(user_id)
-        self.state_manager.set_user_mode(user_id, new_mode)
-        
-        logger.info(f"User {user_id} mode changed: {old_mode.value} -> {new_mode.value}")
-        
-        # Generate confirmation in new mode style
-        from ..llm.prompts import format_mode_switch_message
-        confirmation = format_mode_switch_message(new_mode.value)
-        
-        return confirmation
     
     async def reset_conversation(self, user_id: int):
         """Reset conversation state for user.
