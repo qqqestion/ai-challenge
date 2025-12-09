@@ -152,8 +152,6 @@ check_env_file() {
         log_info "Создайте файл .env с необходимыми переменными:"
         echo ""
         echo "  TELEGRAM_BOT_TOKEN=your_token_here"
-        echo "  YANDEX_API_KEY=your_api_key_here"
-        echo "  YANDEX_FOLDER_ID=your_folder_id_here"
         echo ""
         log_info "См. QUICKSTART.md для подробных инструкций"
         echo ""
@@ -183,13 +181,8 @@ check_env_file() {
         exit 1
     fi
     
-    if [ -z "$YANDEX_API_KEY" ]; then
-        log_error "YANDEX_API_KEY не указан в .env"
-        exit 1
-    fi
-    
-    if [ -z "$YANDEX_FOLDER_ID" ]; then
-        log_error "YANDEX_FOLDER_ID не указан в .env"
+    if [ -z "$ELIZA_TOKEN" ]; then
+        log_error "ELIZA_TOKEN не указан в .env"
         exit 1
     fi
     

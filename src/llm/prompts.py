@@ -24,17 +24,20 @@ def build_rick_prompt(
     if system_prompt:
         messages.append({
             "role": "system",
-            "text": system_prompt
+            "content": system_prompt
         })
     
     # Add conversation history if provided
     if conversation_history:
-        messages.extend(conversation_history)
+        for item in conversation_history:
+            role = item.get("role", "user")
+            content = item.get("content") or item.get("text", "")
+            messages.append({"role": role, "content": content})
     
     # Add current user message
     messages.append({
         "role": "user",
-        "text": user_message
+        "content": user_message
     })
     
     return messages

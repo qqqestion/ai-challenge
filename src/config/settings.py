@@ -14,26 +14,14 @@ class Settings(BaseSettings):
         description="Telegram Bot Token from @BotFather"
     )
 
-    # Yandex Cloud AI Studio Configuration
-    yandex_api_key: str = Field(
+    # Eliza REST API Configuration
+    eliza_token: str = Field(
         ...,
-        description="Yandex Cloud API Key"
+        description="OAuth token for Eliza OpenAI-compatible API"
     )
-    yandex_folder_id: str = Field(
+    llm_base_url: str = Field(
         ...,
-        description="Yandex Cloud Folder ID"
-    )
-    yandex_model_name: str = Field(
-        ...,
-        description="Yandex GPT Model Name (e.g., yandexgpt, yandexgpt-lite)"
-    )
-    yandex_model_uri: str = Field(
-        default="",
-        description="Yandex GPT Model URI (deprecated, kept for compatibility)"
-    )
-    yandex_llm_endpoint: str = Field(
-        default="https://llm.api.cloud.yandex.net/foundationModels/v1/completion",
-        description="Yandex LLM API Endpoint"
+        description="Base URL for Eliza REST API (host only, endpoint is derived by model)"
     )
 
     # LLM Settings
@@ -69,6 +57,10 @@ class Settings(BaseSettings):
     ssl_verify: bool = Field(
         default=True,
         description="Verify SSL certificates (set to False for corporate proxies with self-signed certs)"
+    )
+    telegram_ssl_verify: bool = Field(
+        default=False,
+        description="Verify SSL certificates for Telegram API requests"
     )
 
     model_config = SettingsConfigDict(
@@ -111,64 +103,15 @@ class Settings(BaseSettings):
         if v_upper not in valid_levels:
             raise ValueError(f"Log level must be one of {valid_levels}")
         return v_upper
-
-    @validator("yandex_api_key")
-    def validate_yandex_api_key(cls, v: str) -> str:
-        """Validate Yandex API key format."""
-        if not v or v == "your_yandex_api_key_here":
-            raise ValueError(
-                "YANDEX_API_KEY не указан или содержит значение по умолчанию. "
-                "Получите API ключ в Yandex Cloud Console и укажите его в .env файле."
-            )
-        
-        # API ключи Yandex обычно начинаются с "AQVN"
-        if not v.startswith("AQVN") and not v.startswith("t1."):
-            import warnings
-            warnings.warn(
-                "YANDEX_API_KEY имеет необычный формат. "
-                "API ключи Yandex обычно начинаются с 'AQVN' или 't1.'. "
-                "Убедитесь что вы используете правильный API ключ."
-            )
-        
-        return v
     
-    @validator("yandex_folder_id")
-    def validate_yandex_folder_id(cls, v: str) -> str:
-        """Validate Yandex folder ID format."""
-        if not v or v == "your_yandex_folder_id_here":
+    @validator("eliza_token")
+    def validate_eliza_token(cls, v: str) -> str:
+        """Validate Eliza token presence."""
+        if not v or v == "your_eliza_token_here":
             raise ValueError(
-                "YANDEX_FOLDER_ID не указан или содержит значение по умолчанию. "
-                "Найдите folder ID в Yandex Cloud Console и укажите его в .env файле."
+                "ELIZA_TOKEN не указан или содержит значение по умолчанию. "
+                "Получите токен доступа и укажите его в .env файле."
             )
-        
-        # Folder ID обычно имеет формат b1xxxxxxxxxxxxxxxxx
-        if not v.startswith("b1"):
-            import warnings
-            warnings.warn(
-                f"YANDEX_FOLDER_ID '{v}' имеет необычный формат. "
-                "Folder ID обычно начинается с 'b1'. "
-                "Убедитесь что вы указали правильный folder ID."
-            )
-        
-        return v
-    
-    @validator("yandex_model_name")
-    def validate_model_name(cls, v: str) -> str:
-        """Validate Yandex model name."""
-        if not v or v == "your_yandex_model_name_here":
-            raise ValueError(
-                "YANDEX_MODEL_NAME не указан или содержит значение по умолчанию. "
-                "Укажите имя модели в .env файле (например: yandexgpt, yandexgpt-lite)."
-            )
-        
-        # Удаляем пробелы и проверяем что имя не пустое
-        v = v.strip()
-        if not v:
-            raise ValueError(
-                "YANDEX_MODEL_NAME не может быть пустым. "
-                "Укажите имя модели (например: yandexgpt, yandexgpt-lite)."
-            )
-        
         return v
 
 

@@ -38,14 +38,12 @@ async def initialize_application():
     # Initialize LLM client
     logger.info("Initializing Yandex LLM client...")
     llm_client = YandexLLMClient(
-        api_key=settings.yandex_api_key,
-        folder_id=settings.yandex_folder_id,
-        model_name=settings.yandex_model_name,
-        model_uri=settings.yandex_model_uri,
-        endpoint=settings.yandex_llm_endpoint,
+        api_key=settings.eliza_token,
+        base_url=settings.llm_base_url,
         temperature=settings.llm_temperature,
         max_tokens=settings.llm_max_tokens,
-        ssl_verify=settings.ssl_verify
+        ssl_verify=settings.ssl_verify,
+        timeout=60.0
     )
     logger.info("✓ LLM client initialized")
     

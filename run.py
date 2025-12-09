@@ -45,7 +45,7 @@ def main():
         print(f"\n❌ Error: Required file not found: {e}")
         print("\n💡 Make sure you have:")
         print("   1. Created .env file with required variables")
-        print("   2. Set TELEGRAM_BOT_TOKEN and YANDEX_API_KEY")
+        print("   2. Set TELEGRAM_BOT_TOKEN and ELIZA_TOKEN")
         sys.exit(1)
     except KeyboardInterrupt:
         print("\n\n👋 Bot stopped by user (Ctrl+C)")

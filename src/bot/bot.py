@@ -1,5 +1,6 @@
 """Main Telegram bot implementation."""
 
+from telegram.request import HTTPXRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -42,9 +43,11 @@ class RickBot:
         self.llm_integration = llm_integration
         
         # Create application
+        request = HTTPXRequest(httpx_kwargs={"verify": settings.telegram_ssl_verify})
         self.application = (
             Application.builder()
             .token(settings.telegram_bot_token)
+            .request(request)
             .build()
         )
         
