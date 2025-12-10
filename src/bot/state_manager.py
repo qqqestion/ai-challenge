@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict
 from ..llm.modes import RickMode
+from ..llm.models import ModelName
 from ..config import get_logger
 
 logger = get_logger(__name__)
@@ -16,6 +17,7 @@ class UserState:
     user_id: int
     current_mode: RickMode = RickMode.NORMAL
     temperature: float = 0.3
+    model: ModelName = ModelName.GPT_4_O_MINI
     last_activity: datetime = field(default_factory=datetime.now)
     
     def update_activity(self):
@@ -64,6 +66,18 @@ class StateManager:
         """
         state = self.get_user_state(user_id)
         return state.temperature
+
+    def get_user_model(self, user_id: int) -> ModelName:
+        """Get current model for user."""
+        state = self.get_user_state(user_id)
+        return state.model
+
+    def set_user_model(self, user_id: int, model: ModelName):
+        """Set model for user."""
+        state = self.get_user_state(user_id)
+        old_model = state.model
+        state.model = model
+        logger.info(f"User {user_id} model changed: {old_model} -> {model}")
     
     def set_user_temperature(self, user_id: int, temperature: float):
         """Set temperature for user.

@@ -5,6 +5,7 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters
 )
 from ..config import get_logger, Settings
@@ -15,6 +16,8 @@ from .handlers import (
     reset_command,
     temperature_command,
     commands_command,
+    change_model_command,
+    change_model_callback,
     handle_message,
     error_handler
 )
@@ -71,6 +74,7 @@ class RickBot:
         app.add_handler(CommandHandler("commands", commands_command))
         app.add_handler(CommandHandler("reset", reset_command))
         app.add_handler(CommandHandler("temperature", temperature_command))
+        app.add_handler(CommandHandler("change_model", change_model_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -79,6 +83,9 @@ class RickBot:
                 handle_message
             )
         )
+
+        # Callback query handler for model selection
+        app.add_handler(CallbackQueryHandler(change_model_callback, pattern="^change_model:"))
         
         # Error handler
         app.add_error_handler(error_handler)
@@ -94,6 +101,7 @@ class RickBot:
             BotCommand("help", "Подробная справка"),
             BotCommand("commands", "Список всех команд"),
             BotCommand("temperature", "Настройка температуры"),
+            BotCommand("change_model", "Выбрать модель"),
             BotCommand("reset", "Очистить историю"),
         ]
         

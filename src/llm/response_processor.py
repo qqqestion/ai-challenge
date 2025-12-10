@@ -27,9 +27,9 @@ class ResponseProcessor:
         """Validate response structure using configured parser."""
         return self.parser.validate_response(response)
 
-    def get_usage_info(self, response: Dict) -> Optional[Dict]:
-        """Extract usage information using configured parser."""
-        return self.parser.get_usage_info(response)
+    def get_metadata(self, response: Dict) -> Optional[Dict]:
+        """Extract metadata (usage, cost, time) using configured parser."""
+        return self.parser.get_metadata(response)
 
     @staticmethod
     def sanitize_text(text: str, max_length: Optional[int] = None) -> str:

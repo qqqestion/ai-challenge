@@ -29,7 +29,7 @@ class YandexLLMClient:
         Args:
             api_key: Eliza OAuth token
             base_url: REST API base URL (host, without model-specific path)
-            model_name: Model name (default: gemini-1.5-flash)
+            model_name: Model name (default: gpt-4o-mini)
             temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Maximum tokens in response
             timeout: Request timeout in seconds
@@ -63,12 +63,18 @@ class YandexLLMClient:
             timeout=self.timeout,
             verify=self.ssl_verify
         )
+
+    @staticmethod
+    def _is_claude_model(model_name: str) -> bool:
+        """Detect Claude/Anthropic models by name."""
+        return "claude" in model_name.lower()
     
     async def send_prompt(
         self,
         messages: List[Dict[str, str]],
         temperature: float,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        model: Optional[Union[str, ModelName]] = None,
     ) -> Dict:
         """Send prompt to Eliza REST API.
         
@@ -76,6 +82,7 @@ class YandexLLMClient:
             messages: List of message dictionaries with 'role' and 'content' keys
             temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Override default max_tokens
+            model: Override model for this request
             
         Returns:
             API response as dictionary
@@ -85,19 +92,41 @@ class YandexLLMClient:
         """
         logger.info(f"Sending request to Eliza REST API: {len(messages)} messages, temperature: {temperature}")
         
+        selected_model = (
+            model.value if isinstance(model, ModelName) else model
+        ) or self.model_name
+
         payload: Dict[str, Any] = {
-            "model": self.model_name,
-            "messages": messages,
+            "model": selected_model,
             "temperature": temperature,
             "max_tokens": max_tokens or self.max_tokens,
         }
+
+        if self._is_claude_model(selected_model):
+            # Claude expects system prompt in top-level "system" field, not as a message
+            system_prompt: Optional[str] = None
+            stripped_messages: List[Dict[str, str]] = []
+
+            for message in messages:
+                if message.get("role") == "system":
+                    content = message.get("content")
+                    if content:
+                        system_prompt = f"{system_prompt}\n\n{content}" if system_prompt else content
+                    continue
+                stripped_messages.append(message)
+
+            payload["messages"] = stripped_messages
+            if system_prompt:
+                payload["system"] = system_prompt
+        else:
+            payload["messages"] = messages
 
         headers = {
             "Authorization": f"OAuth {self.api_key}",
             "Content-Type": "application/json",
         }
 
-        endpoint = get_model_endpoint(self.model_name, self.external_model_endpoints)
+        endpoint = get_model_endpoint(selected_model, self.external_model_endpoints)
         url = f"{self.base_url}{endpoint}"
 
         try:

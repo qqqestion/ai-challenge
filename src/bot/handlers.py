@@ -1,9 +1,10 @@
 """Telegram bot command and message handlers."""
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
 from ..config import get_logger
+from ..llm.models import ModelName
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /help - справка
 /commands - список всех команд
 /temperature - настройка температуры ответов
+/change_model - выбрать модель
 /reset - очистить историю
 
 Wubba Lubba Dub Dub! 🧪"""
@@ -64,6 +66,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚙️ **Команды:**
 /start - начать заново
 /help - эта справка
+/change_model - выбрать модель
 /reset - очистить историю разговора
 
 💡 **Советы:**
@@ -222,6 +225,7 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ⚙️ **Управление:**
 /reset - очистить историю разговора
+/change_model - выбрать модель для ответов
 
 💬 **Использование:**
 Просто напиши любое сообщение (не команду) - я отвечу с установленной температурой.
@@ -229,6 +233,69 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *urp* Всё понятно? Используй команды и наслаждайся общением!"""
     
     await update.message.reply_text(commands_text)
+
+
+def build_model_keyboard(active_model: ModelName | None) -> InlineKeyboardMarkup:
+    """Build inline keyboard with available models.
+
+    Args:
+        active_model: Currently selected model to highlight.
+    """
+    buttons = []
+    row = []
+    for idx, model in enumerate(ModelName):
+        label = f"✅ {model.value}" if active_model and model == active_model else model.value
+        row.append(
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"change_model:{model.value}",
+            )
+        )
+        if (idx + 1) % 2 == 0:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    return InlineKeyboardMarkup(buttons)
+
+
+async def change_model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /change_model command: show inline keyboard with models."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+    current_model = state_manager.get_user_model(user_id)
+    keyboard = build_model_keyboard(current_model)
+    await update.message.reply_text(
+        f"Выбери модель для ответов (текущая: {current_model.value}):",
+        reply_markup=keyboard,
+    )
+
+
+async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle model selection from inline keyboard."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data or ""
+    prefix = "change_model:"
+    if not data.startswith(prefix):
+        return
+
+    model_id = data[len(prefix):]
+    model = next((m for m in ModelName if m.value == model_id), None)
+    if not model:
+        await query.edit_message_text("Неизвестная модель. Попробуй ещё раз через /change_model.")
+        return
+
+    user_id = query.from_user.id
+    state_manager = context.bot_data["state_manager"]
+    state_manager.set_user_model(user_id, model)
+    keyboard = build_model_keyboard(model)
+
+    await query.edit_message_text(
+        f"Модель установлена: {model.value}",
+        reply_markup=keyboard,
+    )
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

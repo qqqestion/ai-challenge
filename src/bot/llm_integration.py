@@ -1,6 +1,19 @@
 """Integration layer between Telegram bot and LLM API."""
 
-from ..llm import YandexLLMClient, RickMode, build_rick_prompt, ResponseProcessor
+from typing import Any, Dict, Optional
+
+from ..llm import (
+    YandexLLMClient,
+    RickMode,
+    build_rick_prompt,
+    ResponseProcessor,
+)
+from ..llm.models import ModelName
+from ..llm.response_parsers import (
+    ClaudeResponseParser,
+    GPTResponseParser,
+    GrokResponseParser,
+)
 from ..llm.modes import build_mode_prompt
 from .state_manager import StateManager
 from ..config import get_logger
@@ -62,19 +75,25 @@ class LLMIntegration:
         try:
             response = await self.llm_client.send_prompt(
                 messages,
-                temperature=user_temperature
+                temperature=user_temperature,
+                model=user_state.model,
             )
             
             # Extract text from response
+            self.response_processor.parser = self._select_parser(user_state.model)
             response_text = self.response_processor.extract_text(response)
             
             # Format response (no prefix needed for NORMAL mode)
             formatted_response = response_text.strip()
             
-            # Log usage info
-            usage = self.response_processor.get_usage_info(response)
-            if usage:
-                logger.debug(f"Token usage for user {user_id}: {usage}")
+            # Extract metadata for logging and user output
+            metadata = self.response_processor.get_metadata(response)
+            if metadata:
+                logger.debug(f"Response metadata for user {user_id}: {metadata}")
+
+            metadata_block = self._format_metadata(metadata)
+            if metadata_block:
+                formatted_response = f"{formatted_response}\n\n{metadata_block}"
             
             logger.info(f"Generated response for user {user_id}: {len(formatted_response)} chars")
             
@@ -97,4 +116,40 @@ class LLMIntegration:
         """Cleanup resources."""
         await self.llm_client.close()
         logger.info("LLMIntegration cleanup completed")
+
+    @staticmethod
+    def _format_metadata(metadata: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Render metadata as monospace block for user output."""
+        if not metadata or not isinstance(metadata, dict):
+            return None
+
+        lines = []
+        usage = metadata.get("usage") or {}
+        if isinstance(usage, dict):
+            if usage.get("input_tokens") is not None:
+                lines.append(f"usage.input_tokens = {usage.get('input_tokens')}")
+            if usage.get("output_tokens") is not None:
+                lines.append(f"usage.output_tokens = {usage.get('output_tokens')}")
+
+        if metadata.get("cost") is not None:
+            lines.append(f"cost = {metadata.get('cost')}")
+
+        if metadata.get("time_ms") is not None:
+            lines.append(f"time_ms = {metadata.get('time_ms')}")
+
+        if not lines:
+            return None
+        return "```\n" + "\n".join(lines) + "\n```"
+
+    @staticmethod
+    def _select_parser(model: ModelName) -> Any:
+        """Select parser based on model."""
+        model_name = model.value if isinstance(model, ModelName) else str(model)
+        lower_name = model_name.lower()
+
+        if "claude" in lower_name:
+            return ClaudeResponseParser()
+        if "grok" in lower_name:
+            return GrokResponseParser()
+        return GPTResponseParser()
 
