@@ -1,10 +1,13 @@
 """Telegram bot command and message handlers."""
 
+from pathlib import Path
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
 from ..config import get_logger
 from ..llm.models import ModelName
+from .message_processor import send_response
 
 logger = get_logger(__name__)
 
@@ -222,6 +225,7 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🌡️ **Настройки:**
 /temperature - показать текущую температуру
 /temperature <0.0-2.0> - установить температуру ответов
+/long_prompt - отправить заранее заготовленный длинный промпт
 
 ⚙️ **Управление:**
 /reset - очистить историю разговора
@@ -233,6 +237,32 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 *urp* Всё понятно? Используй команды и наслаждайся общением!"""
     
     await update.message.reply_text(commands_text)
+
+
+async def long_prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /long_prompt command: send predefined long prompt to the model."""
+    user_id = update.effective_user.id
+    llm_integration = context.bot_data["llm_integration"]
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+
+    try:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        prompt_path = base_dir / "metrics" / "prompt_3.md"
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+
+        response_text = await llm_integration.process_message(user_id, prompt_text)
+        await send_response(update, response_text)
+    except FileNotFoundError:
+        logger.error("Long prompt file not found at metrics/prompt_3.md")
+        await update.message.reply_text(
+            "Не удалось найти файл промпта (metrics/prompt_3.md)."
+        )
+    except Exception as e:
+        logger.error(f"Error processing /long_prompt for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text(
+            "*urp* Что-то пошло не так при обработке длинного промпта. Попробуй позже."
+        )
 
 
 def build_model_keyboard(active_model: ModelName | None) -> InlineKeyboardMarkup:

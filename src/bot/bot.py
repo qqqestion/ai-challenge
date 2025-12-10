@@ -16,6 +16,7 @@ from .handlers import (
     reset_command,
     temperature_command,
     commands_command,
+    long_prompt_command,
     change_model_command,
     change_model_callback,
     handle_message,
@@ -74,6 +75,7 @@ class RickBot:
         app.add_handler(CommandHandler("commands", commands_command))
         app.add_handler(CommandHandler("reset", reset_command))
         app.add_handler(CommandHandler("temperature", temperature_command))
+        app.add_handler(CommandHandler("long_prompt", long_prompt_command))
         app.add_handler(CommandHandler("change_model", change_model_command))
         
         # Message handler (for non-command messages)
@@ -101,6 +103,7 @@ class RickBot:
             BotCommand("help", "Подробная справка"),
             BotCommand("commands", "Список всех команд"),
             BotCommand("temperature", "Настройка температуры"),
+            BotCommand("long_prompt", "Отправить длинный заранее заданный промпт"),
             BotCommand("change_model", "Выбрать модель"),
             BotCommand("reset", "Очистить историю"),
         ]

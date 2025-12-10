@@ -18,18 +18,7 @@ async def process_user_message(update: Update, context: ContextTypes.DEFAULT_TYP
     message_text = update.message.text
     
     # Get dependencies from context
-    state_manager = context.bot_data["state_manager"]
     llm_integration = context.bot_data["llm_integration"]
-    max_message_length = context.bot_data.get("max_message_length", 4000)
-    
-    # Validate message length
-    if len(message_text) > max_message_length:
-        logger.warning(f"User {user_id} sent message exceeding max length")
-        await update.message.reply_text(
-            f"*urp* Слушай, твоё сообщение слишком длинное. "
-            f"Сократи до {max_message_length} символов, ладно?"
-        )
-        return
     
     try:
         # Process message through LLM integration

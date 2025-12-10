@@ -67,7 +67,8 @@ class LLMIntegration:
         # Build complete prompt structure (without history)
         messages = build_rick_prompt(
             user_message=user_message,
-            system_prompt=system_prompt,
+            # system_prompt=system_prompt,
+            system_prompt=None,
             conversation_history=None
         )
         
@@ -91,7 +92,7 @@ class LLMIntegration:
             if metadata:
                 logger.debug(f"Response metadata for user {user_id}: {metadata}")
 
-            metadata_block = self._format_metadata(metadata)
+            metadata_block = self._format_metadata(metadata, self.llm_client.max_tokens)
             if metadata_block:
                 formatted_response = f"{formatted_response}\n\n{metadata_block}"
             
@@ -117,19 +118,34 @@ class LLMIntegration:
         await self.llm_client.close()
         logger.info("LLMIntegration cleanup completed")
 
-    @staticmethod
-    def _format_metadata(metadata: Optional[Dict[str, Any]]) -> Optional[str]:
+    def _format_metadata(
+        self,
+        metadata: Optional[Dict[str, Any]],
+        max_output_tokens: Optional[int],
+    ) -> Optional[str]:
         """Render metadata as monospace block for user output."""
         if not metadata or not isinstance(metadata, dict):
             return None
 
         lines = []
         usage = metadata.get("usage") or {}
+        output_pct = None
+
         if isinstance(usage, dict):
-            if usage.get("input_tokens") is not None:
-                lines.append(f"usage.input_tokens = {usage.get('input_tokens')}")
-            if usage.get("output_tokens") is not None:
-                lines.append(f"usage.output_tokens = {usage.get('output_tokens')}")
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+
+            if input_tokens is not None:
+                lines.append(f"usage.input_tokens = {input_tokens}")
+            if output_tokens is not None:
+                lines.append(f"usage.output_tokens = {output_tokens}")
+                if max_output_tokens:
+                    output_pct = (output_tokens / max_output_tokens) * 100
+
+        if output_pct is not None:
+            lines.append(
+                f"token limit = {output_pct:.2f}% (limit = {max_output_tokens})"
+            )
 
         if metadata.get("cost") is not None:
             lines.append(f"cost = {metadata.get('cost')}")
