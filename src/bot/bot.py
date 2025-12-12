@@ -19,6 +19,9 @@ from .handlers import (
     long_prompt_command,
     change_model_command,
     change_model_callback,
+    stats_command,
+    summarization_on_command,
+    summarization_off_command,
     handle_message,
     error_handler
 )
@@ -77,6 +80,9 @@ class RickBot:
         app.add_handler(CommandHandler("temperature", temperature_command))
         app.add_handler(CommandHandler("long_prompt", long_prompt_command))
         app.add_handler(CommandHandler("change_model", change_model_command))
+        app.add_handler(CommandHandler("stats", stats_command))
+        app.add_handler(CommandHandler("summarization_on", summarization_on_command))
+        app.add_handler(CommandHandler("summarization_off", summarization_off_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -99,13 +105,16 @@ class RickBot:
         from telegram import BotCommand
         
         commands = [
-            BotCommand("start", "Начать работу с ботом"),
+            # BotCommand("start", "Начать работу с ботом"),
             BotCommand("help", "Подробная справка"),
             BotCommand("commands", "Список всех команд"),
             BotCommand("temperature", "Настройка температуры"),
             BotCommand("long_prompt", "Отправить длинный заранее заданный промпт"),
             BotCommand("change_model", "Выбрать модель"),
             BotCommand("reset", "Очистить историю"),
+            BotCommand("stats", "Показать статистику использования"),
+            BotCommand("summarization_on", "Включить суммаризацию чата"),
+            BotCommand("summarization_off", "Выключить суммаризацию чата"),
         ]
         
         try:

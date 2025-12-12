@@ -5,6 +5,7 @@ from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
+from ..llm.modes import RickMode, ModePromptBuilder
 from ..config import get_logger
 from ..llm.models import ModelName
 from .message_processor import send_response
@@ -14,14 +15,14 @@ logger = get_logger(__name__)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     user = update.effective_user
     logger.info(f"User {user.id} ({user.username}) started the bot")
-    
+
     welcome_message = """*burp* Слушай, я Рик Санчез, самый гениальный ученый во всей 
 чёртовой мультивселенной. *urp* И по какой-то причине я застрял здесь, отвечая на твои 
 вопросы.
@@ -39,21 +40,24 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /temperature - настройка температуры ответов
 /change_model - выбрать модель
 /reset - очистить историю
+/stats - показать статистику использования
+/summarization_on - включить суммаризацию чата
+/summarization_off - выключить суммаризацию чата
 
 Wubba Lubba Dub Dub! 🧪"""
-    
+
     await update.message.reply_text(welcome_message)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /help command.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     logger.info(f"User {update.effective_user.id} requested help")
-    
+
     help_text = """*urp* Ладно, объясню для особо одарённых:
 
 📝 **Как использовать:**
@@ -71,6 +75,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /help - эта справка
 /change_model - выбрать модель
 /reset - очистить историю разговора
+/stats - показать статистику использования
+
+🧠 **Суммаризация чата:**
+/summarization_on - включить автоматическую суммаризацию (при 20+ сообщениях)
+/summarization_off - выключить суммаризацию
 
 💡 **Советы:**
 • Я помню контекст разговора
@@ -78,39 +87,39 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Температура влияет на креативность ответов
 
 *burp* Понятно? Тогда давай, задавай свои вопросы."""
-    
+
     await update.message.reply_text(help_text)
 
 
 async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /reset command - reset conversation history.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
-    
+
     state_manager.reset_user_state(user_id)
     logger.info(f"User {user_id} reset conversation history")
-    
-    reset_message = """*urp* Окей, я стёр всю нашу историю. Чистый лист. 
+
+    reset_message = """*urp* Окей, я стёр всю нашу историю и сбросил статистику использования. Чистый лист.
 *burp* Надеюсь следующий разговор будет поинтереснее."""
-    
+
     await update.message.reply_text(reset_message)
 
 
 async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /temperature command - set LLM temperature for user.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
-    
+
     # Get temperature argument
     if not context.args:
         # Show current temperature
@@ -119,27 +128,27 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 Используй: `/temperature <значение>` чтобы изменить
 Например: `/temperature 0.7`"""
-        
+
         await update.message.reply_text(message)
         return
-    
+
     # Parse temperature value
     try:
         temperature = float(context.args[0])
-        
+
         # Validate range
         if not (0.0 <= temperature <= 2.0):
             error_message = """*urp* Температура должна быть от 0.0 до 2.0!"""
-            
+
             await update.message.reply_text(error_message)
             return
-        
+
         # Set temperature
         old_temp = state_manager.get_user_temperature(user_id)
         state_manager.set_user_temperature(user_id, temperature)
-        
+
         logger.info(f"User {user_id} set temperature: {old_temp} -> {temperature}")
-        
+
         # Format response based on temperature value
         if temperature == 0.0:
             temp_desc = "максимальная точность и детерминированность"
@@ -149,7 +158,7 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             temp_desc = "баланс между точностью и креативностью"
         else:
             temp_desc = "высокая креативность и разнообразие"
-        
+
         message = f"""🌡️ **Температура установлена:** {temperature}
 
 *urp* Теперь мои ответы будут с {temp_desc}.
@@ -158,9 +167,9 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 Новая температура: {temperature}
 
 Используй `/temperature` без параметров чтобы посмотреть текущее значение."""
-        
+
         await update.message.reply_text(message)
-        
+
     except ValueError:
         error_message = """*burp* Неверный формат температуры!
 
@@ -170,51 +179,164 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 /temperature 0.0
 /temperature 0.7
 /temperature 2.0"""
-        
+
         await update.message.reply_text(error_message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle regular text messages.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     user = update.effective_user
     message_text = update.message.text
-    
-    logger.info(f"Message from user {user.id} ({user.username}): {message_text[:50]}...")
-    
+
+    logger.info(
+        f"Message from user {user.id} ({user.username}): {message_text[:50]}..."
+    )
+
     # Show typing indicator
     await update.message.chat.send_action(ChatAction.TYPING)
-    
+
     # Get message processor and process the message
     from .message_processor import process_user_message
-    
+
     try:
         await process_user_message(update, context)
     except Exception as e:
-        logger.error(f"Error processing message from user {user.id}: {e}", exc_info=True)
-        
+        logger.error(
+            f"Error processing message from user {user.id}: {e}", exc_info=True
+        )
+
         error_message = """*urp* Чёрт, что-то пошло не так. Может быть мои системы 
 перегружены, или просто вселенная решила посмеяться надо мной.
 
 Попробуй ещё раз, или используй /reset если проблема повторяется."""
-        
+
         await update.message.reply_text(error_message)
+
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /stats command - show usage statistics.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+    logger.info(f"User {user_id} requested usage statistics")
+
+    # Get user's personal statistics
+    user_state = state_manager.get_user_state(user_id)
+    user_stats = user_state.get_usage_stats()
+
+    summarization_status = (
+        "включена" if user_state.summarization_enabled else "выключена"
+    )
+
+    # Build stats text with conditional summarization display
+    stats_lines = [
+        "👤 **Твоя статистика:**",
+        "",
+        "**Основные запросы:**",
+        f"• Запросы: {user_stats['requests_count']}",
+        f"• Input tokens: {user_stats['input_tokens']}",
+        f"• Output tokens: {user_stats['output_tokens']}",
+        f"• Стоимость: ${user_stats['cost']:.5f}",
+    ]
+
+    # Only show summarization stats if enabled
+    if user_state.summarization_enabled:
+        stats_lines.extend(
+            [
+                "",
+                "**Суммаризация:**",
+                f"• Статус: {summarization_status}",
+                f"• Запросов суммаризации: {user_stats['summarization_count']}",
+                f"• Tokens суммаризации (input): {user_stats['summarization_input_tokens']}",
+                f"• Tokens суммаризации (output): {user_stats['summarization_output_tokens']}",
+                f"• Стоимость суммаризации: ${user_stats['summarization_cost']:.5f}",
+                "",
+                "**Всего:**",
+                f"• Всего запросов: {user_stats['total_requests']}",
+                f"• Всего input tokens: {user_stats['total_input_tokens']}",
+                f"• Всего output tokens: {user_stats['total_output_tokens']}",
+                f"• Общая стоимость: ${user_stats['total_cost']:.5f}",
+            ]
+        )
+    else:
+        stats_lines.extend(
+            [
+                "",
+                f"• Суммаризация: {summarization_status}",
+            ]
+        )
+
+    # Add total statistics
+    stats_lines.extend(["", "*urp* Вот сколько токенов мы уже сожгли!"])
+
+    stats_text = "\n".join(stats_lines)
+
+    await update.message.reply_text(stats_text)
+
+
+async def summarization_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /summarization_on command - enable chat summarization.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    state_manager.set_user_summarization_enabled(user_id, True)
+    logger.info(f"User {user_id} enabled summarization")
+
+    message = """🧠 **Суммаризация чата включена!**
+
+*urp* Теперь, когда в нашем разговоре накопится 20+ сообщений, я буду автоматически
+суммировать историю чата, чтобы сохранить память, но не переполнять её.
+
+Это поможет поддерживать длинные разговоры без потери контекста!"""
+
+    await update.message.reply_text(message)
+
+
+async def summarization_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /summarization_off command - disable chat summarization.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    state_manager.set_user_summarization_enabled(user_id, False)
+    logger.info(f"User {user_id} disabled summarization")
+
+    message = """🚫 **Суммаризация чата выключена!**
+
+*burp* Теперь я буду хранить полную историю нашего разговора без суммаризации.
+Это может привести к более длинным ответам, но я запомню всё!"""
+
+    await update.message.reply_text(message)
 
 
 async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /commands command - show list of all available commands.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
     user_id = update.effective_user.id
     logger.info(f"User {user_id} requested commands list")
-    
+
     commands_text = """📋 **Список всех команд:**
 
 🔹 **Основные команды:**
@@ -231,11 +353,18 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /reset - очистить историю разговора
 /change_model - выбрать модель для ответов
 
+🧠 **Суммаризация:**
+/summarization_on - включить суммаризацию чата
+/summarization_off - выключить суммаризацию чата
+
+📊 **Статистика:**
+/stats - показать статистику использования
+
 💬 **Использование:**
 Просто напиши любое сообщение (не команду) - я отвечу с установленной температурой.
 
 *urp* Всё понятно? Используй команды и наслаждайся общением!"""
-    
+
     await update.message.reply_text(commands_text)
 
 
@@ -259,7 +388,9 @@ async def long_prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "Не удалось найти файл промпта (metrics/prompt_3.md)."
         )
     except Exception as e:
-        logger.error(f"Error processing /long_prompt for user {user_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error processing /long_prompt for user {user_id}: {e}", exc_info=True
+        )
         await update.message.reply_text(
             "*urp* Что-то пошло не так при обработке длинного промпта. Попробуй позже."
         )
@@ -274,7 +405,11 @@ def build_model_keyboard(active_model: ModelName | None) -> InlineKeyboardMarkup
     buttons = []
     row = []
     for idx, model in enumerate(ModelName):
-        label = f"✅ {model.value}" if active_model and model == active_model else model.value
+        label = (
+            f"✅ {model.value}"
+            if active_model and model == active_model
+            else model.value
+        )
         row.append(
             InlineKeyboardButton(
                 text=label,
@@ -311,10 +446,12 @@ async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if not data.startswith(prefix):
         return
 
-    model_id = data[len(prefix):]
+    model_id = data[len(prefix) :]
     model = next((m for m in ModelName if m.value == model_id), None)
     if not model:
-        await query.edit_message_text("Неизвестная модель. Попробуй ещё раз через /change_model.")
+        await query.edit_message_text(
+            "Неизвестная модель. Попробуй ещё раз через /change_model."
+        )
         return
 
     user_id = query.from_user.id
@@ -330,21 +467,22 @@ async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle errors in bot updates.
-    
+
     Args:
         update: Telegram update object
         context: Bot context
     """
-    logger.error(f"Update {update} caused error: {context.error}", exc_info=context.error)
-    
+    logger.error(
+        f"Update {update} caused error: {context.error}", exc_info=context.error
+    )
+
     if update and update.effective_message:
         error_message = """*burp* Произошла какая-то ошибка. Не моя вина, конечно. 
 Вероятно, проблема в квантовых флуктуациях или в твоём подключении к интернету.
 
 Попробуй ещё раз."""
-        
+
         try:
             await update.effective_message.reply_text(error_message)
         except Exception as e:
             logger.error(f"Failed to send error message: {e}")
-
