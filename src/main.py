@@ -7,21 +7,23 @@ from .config import get_settings, setup_logger, get_logger
 from .llm import YandexLLMClient, ResponseProcessor
 from .bot import RickBot, StateManager
 from .bot.llm_integration import LLMIntegration
+from .utils.database import DatabaseManager
 
 # Global references for cleanup
 _bot_instance = None
 _llm_client = None
+_db_manager = None
 
 
 async def initialize_application():
     """Initialize all application components.
-    
+
     Returns:
-        Tuple of (bot, llm_client) instances
+        Tuple of (bot, llm_client, db_manager) instances
     """
     # Load settings
     settings = get_settings()
-    
+
     # Setup logging
     setup_logger(
         name="rick_bot",
@@ -29,12 +31,12 @@ async def initialize_application():
         log_to_file=True,
         log_dir="logs"
     )
-    
+
     logger = get_logger()
     logger.info("=" * 60)
     logger.info("Rick Sanchez Bot - Starting initialization")
     logger.info("=" * 60)
-    
+
     # Initialize LLM client
     logger.info("Initializing Yandex LLM client...")
     llm_client = YandexLLMClient(
@@ -46,17 +48,24 @@ async def initialize_application():
         timeout=60.0
     )
     logger.info("✓ LLM client initialized")
-    
+
     # Initialize response processor
     response_processor = ResponseProcessor()
-    
+
+    # Initialize database manager
+    logger.info("Initializing database manager...")
+    db_manager = DatabaseManager(db_path="rick_bot.db")
+    await db_manager.initialize()
+    logger.info("✓ Database manager initialized")
+
     # Initialize state manager
     logger.info("Initializing state manager...")
     state_manager = StateManager(
+        db_manager=db_manager,
         cleanup_hours=settings.user_state_cleanup_hours
     )
     logger.info("✓ State manager initialized")
-    
+
     # Initialize LLM integration
     logger.info("Initializing LLM integration...")
     llm_integration = LLMIntegration(
@@ -65,7 +74,7 @@ async def initialize_application():
         response_processor=response_processor
     )
     logger.info("✓ LLM integration initialized")
-    
+
     # Initialize bot
     logger.info("Initializing Telegram bot...")
     bot = RickBot(
@@ -74,40 +83,46 @@ async def initialize_application():
         llm_integration=llm_integration
     )
     logger.info("✓ Bot initialized")
-    
+
     logger.info("=" * 60)
     logger.info("Initialization complete!")
     logger.info("=" * 60)
-    
-    return bot, llm_client
+
+    return bot, llm_client, db_manager
 
 
-async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient):
+async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_manager: DatabaseManager):
     """Cleanup application resources.
-    
+
     Args:
         bot: Rick bot instance
         llm_client: LLM client instance
+        db_manager: Database manager instance
     """
     logger = get_logger()
     logger.info("=" * 60)
     logger.info("Starting cleanup...")
     logger.info("=" * 60)
-    
+
     try:
         # Stop bot
         logger.info("Stopping bot...")
         await bot.stop()
         logger.info("✓ Bot stopped")
-        
+
         # Close LLM client
         logger.info("Closing LLM client...")
         await llm_client.close()
         logger.info("✓ LLM client closed")
-        
+
+        # Close database connection
+        logger.info("Closing database connection...")
+        await db_manager.close()
+        logger.info("✓ Database connection closed")
+
     except Exception as e:
         logger.error(f"Error during cleanup: {e}", exc_info=True)
-    
+
     logger.info("=" * 60)
     logger.info("Cleanup complete. Goodbye!")
     logger.info("=" * 60)
@@ -115,42 +130,43 @@ async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient):
 
 async def main():
     """Main application entry point."""
-    global _bot_instance, _llm_client
-    
+    global _bot_instance, _llm_client, _db_manager
+
     logger = get_logger()
-    
+
     try:
         # Initialize
-        bot, llm_client = await initialize_application()
+        bot, llm_client, db_manager = await initialize_application()
         _bot_instance = bot
         _llm_client = llm_client
-        
+        _db_manager = db_manager
+
         # Start bot
         await bot.start()
-        
+
         # Keep running until interrupted
         logger.info("Bot is running. Press Ctrl+C to stop.")
-        
+
         # Wait for stop signal
         stop_event = asyncio.Event()
-        
+
         def signal_handler(sig, frame):
             logger.info(f"Received signal {sig}, initiating shutdown...")
             stop_event.set()
-        
+
         # Register signal handlers
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        
+
         # Wait for stop event
         await stop_event.wait()
-        
+
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt (Ctrl+C)")
     except Exception as e:
         # Check for specific error types
         error_message = str(e)
-        
+
         if "NetworkError" in str(type(e)) or "ConnectError" in error_message:
             logger.error("=" * 60)
             logger.error("ОШИБКА ПОДКЛЮЧЕНИЯ К TELEGRAM API")
@@ -168,12 +184,12 @@ async def main():
             logger.error("=" * 60)
         else:
             logger.error(f"Fatal error in main: {e}", exc_info=True)
-        
+
         raise
     finally:
         # Cleanup
-        if _bot_instance and _llm_client:
-            await cleanup_application(_bot_instance, _llm_client)
+        if _bot_instance and _llm_client and _db_manager:
+            await cleanup_application(_bot_instance, _llm_client, _db_manager)
 
 
 def run():

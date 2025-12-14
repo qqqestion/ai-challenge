@@ -44,19 +44,19 @@ class LLMIntegration:
     
     async def process_message(self, user_id: int, message: str) -> str:
         """Process user message and generate response.
-        
+
         Args:
             user_id: Telegram user ID
             message: User message text
-            
+
         Returns:
             Generated response text
-            
+
         Raises:
             Exception: If LLM API call fails
         """
-        # Get user state and temperature
-        user_state = self.state_manager.get_user_state(user_id)
+        # Get user state and temperature (async)
+        user_state = await self.state_manager.get_user_state(user_id)
         user_temperature = user_state.temperature
 
         logger.info(f"Processing message for user {user_id} with temperature {user_temperature}")
@@ -66,7 +66,7 @@ class LLMIntegration:
 
         # Build prompt with NORMAL mode (only mode available)
         system_prompt, user_message = build_mode_prompt(RickMode.NORMAL, message)
-        
+
         # Build complete prompt structure with conversation history
         messages = build_rick_prompt(
             user_message=user_message,
@@ -74,7 +74,7 @@ class LLMIntegration:
             # system_prompt=None,
             conversation_history=user_state.conversation_history
         )
-        
+
         # Send to LLM API with user-specific temperature
         try:
             response = await self.llm_client.send_prompt(
@@ -82,20 +82,20 @@ class LLMIntegration:
                 temperature=user_temperature,
                 model=user_state.model,
             )
-            
+
             # Extract text from response
             self.response_processor.parser = self._select_parser(user_state.model)
             response_text = self.response_processor.extract_text(response)
-            
+
             # Format response (no prefix needed for NORMAL mode)
             formatted_response = response_text.strip()
-            
+
             # Extract metadata for logging and user output
             metadata = self.response_processor.get_metadata(response)
             if metadata:
                 logger.debug(f"Response metadata for user {user_id}: {metadata}")
 
-            # Record usage statistics
+            # Record usage statistics (async)
             if metadata:
                 usage = metadata.get("usage", {})
                 input_tokens = usage.get("input_tokens", 0)
@@ -103,31 +103,31 @@ class LLMIntegration:
                 cost = metadata.get("cost", 0.0)
 
                 if input_tokens > 0 or output_tokens > 0 or cost > 0:
-                    user_state.add_usage_stats(input_tokens, output_tokens, cost)
+                    await user_state.add_usage_stats(input_tokens, output_tokens, cost)
                     logger.debug(f"Recorded usage stats for user {user_id}: input={input_tokens}, output={output_tokens}, cost={cost}")
 
             metadata_block = self._format_metadata(metadata, self.llm_client.max_tokens)
             if metadata_block:
                 formatted_response = f"{formatted_response}\n\n{metadata_block}"
 
-            # Save messages to conversation history
-            user_state.add_message("user", message)
-            user_state.add_message("assistant", response_text)
+            # Save messages to conversation history (async)
+            await user_state.add_message("user", message)
+            await user_state.add_message("assistant", response_text)
 
             # Отправляем RAW ответ от модели без какой-либо обработки
             return formatted_response
-            
+
         except Exception as e:
             logger.error(f"Failed to process message for user {user_id}: {e}", exc_info=True)
             raise
     
     async def reset_conversation(self, user_id: int):
         """Reset conversation state for user.
-        
+
         Args:
             user_id: Telegram user ID
         """
-        self.state_manager.reset_user_state(user_id)
+        await self.state_manager.reset_user_state(user_id)
         logger.info(f"Conversation reset for user {user_id}")
     
     async def cleanup(self):
@@ -258,7 +258,7 @@ START COMPRESSION.
             self.response_processor.parser = self._select_parser(user_state.model)
             summary_text = self.response_processor.extract_text(response)
 
-            # Record summarization statistics
+            # Record summarization statistics (async)
             metadata = self.response_processor.get_metadata(response)
             if metadata:
                 usage = metadata.get("usage", {})
@@ -266,14 +266,11 @@ START COMPRESSION.
                 output_tokens = usage.get("output_tokens", 0)
                 cost = metadata.get("cost", 0.0)
 
-                user_state.add_summarization_stats(input_tokens, output_tokens, cost)
+                await user_state.add_summarization_stats(input_tokens, output_tokens, cost)
                 logger.debug(f"Recorded summarization stats for user {user_id}: input={input_tokens}, output={output_tokens}, cost={cost}")
 
-            # Replace conversation history with summary
-            # Keep only the most recent messages and add the summary
-            user_state.conversation_history = [
-                {"role": "assistant", "content": f"[CHAT SUMMARY: {summary_text}]\n\nContinuing our conversation..."}
-            ]
+            # Perform summarization using StateManager (handles DB operations)
+            await self.state_manager.perform_summarization(user_id, f"[CHAT SUMMARY: {summary_text}]\n\nContinuing our conversation...")
 
             logger.info(f"Summarization completed for user {user_id}")
 

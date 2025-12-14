@@ -41,4 +41,4 @@ class ResponseProcessor:
             logger.warning(f"Text truncated to {max_length} characters")
 
         return text
-
+        

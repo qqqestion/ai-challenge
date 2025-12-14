@@ -101,7 +101,7 @@ async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
 
-    state_manager.reset_user_state(user_id)
+    await state_manager.reset_user_state(user_id)
     logger.info(f"User {user_id} reset conversation history")
 
     reset_message = """*urp* Окей, я стёр всю нашу историю и сбросил статистику использования. Чистый лист.
@@ -123,7 +123,7 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Get temperature argument
     if not context.args:
         # Show current temperature
-        current_temp = state_manager.get_user_temperature(user_id)
+        current_temp = await state_manager.get_user_temperature(user_id)
         message = f"""🌡️ **Текущая температура:** {current_temp}
 
 Используй: `/temperature <значение>` чтобы изменить
@@ -144,8 +144,8 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         # Set temperature
-        old_temp = state_manager.get_user_temperature(user_id)
-        state_manager.set_user_temperature(user_id, temperature)
+        old_temp = await state_manager.get_user_temperature(user_id)
+        await state_manager.set_user_temperature(user_id, temperature)
 
         logger.info(f"User {user_id} set temperature: {old_temp} -> {temperature}")
 
@@ -230,8 +230,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {user_id} requested usage statistics")
 
     # Get user's personal statistics
-    user_state = state_manager.get_user_state(user_id)
-    user_stats = user_state.get_usage_stats()
+    user_state = await state_manager.get_user_state(user_id)
+    user_stats = await user_state.get_usage_stats()
 
     summarization_status = (
         "включена" if user_state.summarization_enabled else "выключена"
@@ -293,7 +293,7 @@ async def summarization_on_command(update: Update, context: ContextTypes.DEFAULT
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
 
-    state_manager.set_user_summarization_enabled(user_id, True)
+    await state_manager.set_user_summarization_enabled(user_id, True)
     logger.info(f"User {user_id} enabled summarization")
 
     message = """🧠 **Суммаризация чата включена!**
@@ -316,7 +316,7 @@ async def summarization_off_command(update: Update, context: ContextTypes.DEFAUL
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
 
-    state_manager.set_user_summarization_enabled(user_id, False)
+    await state_manager.set_user_summarization_enabled(user_id, False)
     logger.info(f"User {user_id} disabled summarization")
 
     message = """🚫 **Суммаризация чата выключена!**
@@ -428,7 +428,7 @@ async def change_model_command(update: Update, context: ContextTypes.DEFAULT_TYP
     """Handle /change_model command: show inline keyboard with models."""
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
-    current_model = state_manager.get_user_model(user_id)
+    current_model = await state_manager.get_user_model(user_id)
     keyboard = build_model_keyboard(current_model)
     await update.message.reply_text(
         f"Выбери модель для ответов (текущая: {current_model.value}):",
@@ -456,7 +456,7 @@ async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     user_id = query.from_user.id
     state_manager = context.bot_data["state_manager"]
-    state_manager.set_user_model(user_id, model)
+    await state_manager.set_user_model(user_id, model)
     keyboard = build_model_keyboard(model)
 
     await query.edit_message_text(

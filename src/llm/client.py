@@ -21,7 +21,7 @@ class YandexLLMClient:
         model_name: Union[str, ModelName] = ModelName.GPT_4_O_MINI,
         max_tokens: int = 2000,
         timeout: float = 60.0,
-        ssl_verify: bool = True,
+        ssl_verify: bool = False,
         external_model_endpoints: Optional[Dict[str, str]] = None,
     ):
         """Initialize Eliza LLM client.
