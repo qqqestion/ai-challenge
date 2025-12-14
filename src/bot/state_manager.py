@@ -30,7 +30,7 @@ class UserState:
     last_activity: datetime = field(default_factory=datetime.now)
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     usage_stats: List[UsageStats] = field(default_factory=list)
-    summarization_enabled: bool = False
+    summarization_enabled: bool = True
     summarization_stats: List[UsageStats] = field(default_factory=list)
     
     def update_activity(self):

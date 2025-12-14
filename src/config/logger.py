@@ -77,6 +77,10 @@ def setup_logger(
     # Allow propagation to src logger so all child loggers use src handlers
     logger.propagate = True
     
+    # Set logging level for the entire 'rick_bot' hierarchy
+    # This ensures all child loggers (e.g., 'rick_bot.llm.client') inherit the level
+    logging.getLogger("rick_bot").setLevel(level)
+    
     return logger
 
 
