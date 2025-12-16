@@ -119,20 +119,27 @@ async def demo_tools(session: ClientSession):
     print("\n📌 Demo 1: Get user information")
     result = await call_mcp_tool(session, "get_user", {"username": "octocat"})
     data = json.loads(result)
-    print(f"   User: {data['login']}")
-    print(f"   Name: {data['name']}")
-    print(f"   Repos: {data['public_repos']}")
-    print(f"   Followers: {data['followers']}")
+    if "error" in data:
+        print(f"   ❌ Error: {data['error']}")
+    else:
+        print(f"   User: {data['login']}")
+        print(f"   Name: {data.get('name', 'N/A')}")
+        print(f"   Repos: {data['public_repos']}")
+        print(f"   Followers: {data['followers']}")
 
     # Demo 2: get_user_repos
     print("\n📌 Demo 2: Get user repositories")
     result = await call_mcp_tool(
-        session, "get_user_repos", {"username": "octocat", "limit": 3}
+        session, "get_user_repos", {"username": "octocat", "limit": 5}
     )
     data = json.loads(result)
-    print(f"   Total repos: {data['total_count']}")
-    for repo in data["repositories"]:
-        print(f"   - {repo['name']} ({repo['language']}) ⭐ {repo['stars']}")
+    if "error" in data:
+        print(f"   ❌ Error: {data['error']}")
+    else:
+        print(f"   Total repos: {data['total_count']}")
+        for repo in data["repositories"][:3]:
+            lang = repo.get('language') or 'N/A'
+            print(f"   - {repo['name']} ({lang}) ⭐ {repo['stargazers_count']}")
 
     # Demo 3: get_repo_info
     print("\n📌 Demo 3: Get repository information")
@@ -140,35 +147,13 @@ async def demo_tools(session: ClientSession):
         session, "get_repo_info", {"owner": "octocat", "repo": "Hello-World"}
     )
     data = json.loads(result)
-    print(f"   Repository: {data['full_name']}")
-    print(f"   Description: {data['description']}")
-    print(f"   Stars: {data['stars']}")
-    print(f"   Language: {data['language']}")
-
-    # Demo 4: search_repos
-    print("\n📌 Demo 4: Search repositories")
-    result = await call_mcp_tool(
-        session, "search_repos", {"query": "telegram bot", "limit": 3}
-    )
-    data = json.loads(result)
-    print(f"   Query: '{data['query']}'")
-    print(f"   Results: {data['total_count']}")
-    for repo in data["items"]:
-        print(f"   - {repo['name']} ⭐ {repo['stars']}")
-
-    # Demo 5: get_repo_issues
-    print("\n📌 Demo 5: Get repository issues")
-    result = await call_mcp_tool(
-        session,
-        "get_repo_issues",
-        {"owner": "octocat", "repo": "Hello-World", "state": "open", "limit": 3},
-    )
-    data = json.loads(result)
-    print(f"   Repository: {data['owner']}/{data['repo']}")
-    print(f"   State: {data['state']}")
-    print(f"   Total issues: {data['total_count']}")
-    for issue in data["issues"]:
-        print(f"   - #{issue['number']}: {issue['title']}")
+    if "error" in data:
+        print(f"   ❌ Error: {data['error']}")
+    else:
+        print(f"   Repository: {data['full_name']}")
+        print(f"   Description: {data.get('description', 'N/A')}")
+        print(f"   Stars: {data['stargazers_count']}")
+        print(f"   Language: {data.get('language', 'N/A')}")
 
 
 async def main():

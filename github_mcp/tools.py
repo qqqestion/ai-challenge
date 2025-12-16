@@ -1,203 +1,268 @@
 """
-Stub tools for GitHub MCP server.
+GitHub API integration tools.
 
-These are mock implementations that return example data.
-In the future, these will be replaced with real GitHub API calls.
+Provides real GitHub API calls using httpx and personal access token.
 """
 
 import logging
+import os
+from dataclasses import dataclass, asdict
 from typing import Any
 
+import httpx
+from dotenv import load_dotenv
+
 logger = logging.getLogger("github-mcp-server.tools")
+
+# Load environment variables
+load_dotenv()
+GITHUB_TOKEN = os.getenv("GITHUB_PERSONAL_TOKEN")
+
+# GitHub API configuration
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_API_VERSION = "2022-11-28"
+
+
+def get_headers() -> dict[str, str]:
+    """Get headers for GitHub API requests."""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    }
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    return headers
+
+
+@dataclass
+class UserInfo:
+    """Minimal user information from GitHub."""
+
+    login: str
+    id: int
+    name: str | None
+    bio: str | None
+    public_repos: int
+    followers: int
+    following: int
+    html_url: str
+    avatar_url: str
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class RepositoryInfo:
+    """Minimal repository information from GitHub."""
+
+    name: str
+    full_name: str
+    description: str | None
+    html_url: str
+    stargazers_count: int
+    forks_count: int
+    language: str | None
+    open_issues_count: int
+    created_at: str
+    updated_at: str
+    default_branch: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class UserReposResponse:
+    """Response for user repositories list."""
+
+    username: str
+    total_count: int
+    repositories: list[RepositoryInfo]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "username": self.username,
+            "total_count": self.total_count,
+            "repositories": [repo.to_dict() for repo in self.repositories],
+        }
 
 
 async def get_user(username: str) -> dict[str, Any]:
     """
-    Get GitHub user information.
+    Get information about a GitHub user.
 
     Args:
-        username: GitHub username
+        username: GitHub username to look up
 
     Returns:
-        User information (stub data)
+        User information dictionary
     """
     logger.debug(f"get_user() called with username={username}")
-    return {
-        "_stub": True,
-        "_note": "This is mock data. Real GitHub API integration coming soon.",
-        "login": username,
-        "id": 12345678,
-        "name": f"Mock User {username}",
-        "email": f"{username}@example.com",
-        "bio": "This is a mock GitHub user profile",
-        "public_repos": 42,
-        "followers": 100,
-        "following": 50,
-        "created_at": "2020-01-01T00:00:00Z",
-        "updated_at": "2024-12-16T00:00:00Z",
-        "html_url": f"https://github.com/{username}",
-    }
+
+    url = f"{GITHUB_API_BASE}/users/{username}"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=get_headers(), timeout=10.0)
+            response.raise_for_status()
+
+            data = response.json()
+
+            user_info = UserInfo(
+                login=data["login"],
+                id=data["id"],
+                name=data.get("name"),
+                bio=data.get("bio"),
+                public_repos=data["public_repos"],
+                followers=data["followers"],
+                following=data["following"],
+                html_url=data["html_url"],
+                avatar_url=data["avatar_url"],
+                created_at=data["created_at"],
+            )
+
+            logger.info(f"Successfully fetched user: {username}")
+            return user_info.to_dict()
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error fetching user {username}: {e.response.status_code}")
+            if e.response.status_code == 404:
+                return {"error": f"User '{username}' not found"}
+            elif e.response.status_code == 403:
+                return {"error": "Rate limit exceeded or access forbidden"}
+            else:
+                return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error fetching user {username}: {e}")
+            return {"error": str(e)}
 
 
 async def get_user_repos(username: str, limit: int = 10) -> dict[str, Any]:
     """
-    Get list of user's repositories.
+    Get list of repositories for a GitHub user.
 
     Args:
         username: GitHub username
-        limit: Maximum number of repositories to return
+        limit: Maximum number of repositories to return (default: 10)
 
     Returns:
-        List of repositories (stub data)
+        User repositories information
     """
     logger.debug(f"get_user_repos() called with username={username}, limit={limit}")
-    repos = [
-        {
-            "id": i,
-            "name": f"repo-{i}",
-            "full_name": f"{username}/repo-{i}",
-            "description": f"Mock repository #{i} description",
-            "html_url": f"https://github.com/{username}/repo-{i}",
-            "stars": 10 * i,
-            "forks": 5 * i,
-            "language": ["Python", "JavaScript", "Go", "Rust"][i % 4],
-            "created_at": "2023-01-01T00:00:00Z",
-            "updated_at": "2024-12-16T00:00:00Z",
-            "open_issues": i * 2,
-        }
-        for i in range(1, min(limit, 10) + 1)
-    ]
 
-    return {
-        "_stub": True,
-        "_note": "This is mock data. Real GitHub API integration coming soon.",
-        "username": username,
-        "total_count": len(repos),
-        "repositories": repos,
+    url = f"{GITHUB_API_BASE}/users/{username}/repos"
+    params = {
+        "per_page": min(limit, 100),
+        "sort": "updated",
+        "direction": "desc",
     }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url, headers=get_headers(), params=params, timeout=10.0
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            repositories = []
+            for repo_data in data[:limit]:
+                repo_info = RepositoryInfo(
+                    name=repo_data["name"],
+                    full_name=repo_data["full_name"],
+                    description=repo_data.get("description"),
+                    html_url=repo_data["html_url"],
+                    stargazers_count=repo_data["stargazers_count"],
+                    forks_count=repo_data["forks_count"],
+                    language=repo_data.get("language"),
+                    open_issues_count=repo_data["open_issues_count"],
+                    created_at=repo_data["created_at"],
+                    updated_at=repo_data["updated_at"],
+                    default_branch=repo_data["default_branch"],
+                )
+                repositories.append(repo_info)
+
+            result = UserReposResponse(
+                username=username,
+                total_count=len(repositories),
+                repositories=repositories,
+            )
+
+            logger.info(
+                f"Successfully fetched {len(repositories)} repositories for user: {username}"
+            )
+            return result.to_dict()
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error fetching repos for {username}: {e.response.status_code}"
+            )
+            if e.response.status_code == 404:
+                return {"error": f"User '{username}' not found"}
+            elif e.response.status_code == 403:
+                return {"error": "Rate limit exceeded or access forbidden"}
+            else:
+                return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error fetching repos for {username}: {e}")
+            return {"error": str(e)}
 
 
 async def get_repo_info(owner: str, repo: str) -> dict[str, Any]:
     """
-    Get detailed information about a repository.
+    Get detailed information about a specific repository.
 
     Args:
-        owner: Repository owner
+        owner: Repository owner (username or organization)
         repo: Repository name
 
     Returns:
-        Repository information (stub data)
+        Repository information dictionary
     """
     logger.debug(f"get_repo_info() called with owner={owner}, repo={repo}")
-    return {
-        "_stub": True,
-        "_note": "This is mock data. Real GitHub API integration coming soon.",
-        "id": 987654321,
-        "name": repo,
-        "full_name": f"{owner}/{repo}",
-        "owner": {
-            "login": owner,
-            "id": 12345678,
-            "html_url": f"https://github.com/{owner}",
-        },
-        "description": f"Mock description for {repo}",
-        "html_url": f"https://github.com/{owner}/{repo}",
-        "stars": 1234,
-        "watchers": 567,
-        "forks": 89,
-        "open_issues": 15,
-        "language": "Python",
-        "license": "MIT",
-        "default_branch": "main",
-        "created_at": "2022-01-01T00:00:00Z",
-        "updated_at": "2024-12-16T00:00:00Z",
-        "pushed_at": "2024-12-15T10:30:00Z",
-        "size": 5678,
-        "topics": ["python", "bot", "telegram", "ai"],
-    }
 
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}"
 
-async def search_repos(query: str, limit: int = 10) -> dict[str, Any]:
-    """
-    Search for repositories by query.
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, headers=get_headers(), timeout=10.0)
+            response.raise_for_status()
 
-    Args:
-        query: Search query
-        limit: Maximum number of results to return
+            data = response.json()
 
-    Returns:
-        Search results (stub data)
-    """
-    logger.debug(f"search_repos() called with query={query}, limit={limit}")
-    results = [
-        {
-            "id": i,
-            "name": f"{query}-project-{i}",
-            "full_name": f"user{i}/{query}-project-{i}",
-            "description": f"Mock search result for '{query}' - project #{i}",
-            "html_url": f"https://github.com/user{i}/{query}-project-{i}",
-            "stars": 100 - i * 10,
-            "language": ["Python", "JavaScript", "TypeScript", "Go"][i % 4],
-            "updated_at": "2024-12-16T00:00:00Z",
-        }
-        for i in range(1, min(limit, 10) + 1)
-    ]
+            repo_info = RepositoryInfo(
+                name=data["name"],
+                full_name=data["full_name"],
+                description=data.get("description"),
+                html_url=data["html_url"],
+                stargazers_count=data["stargazers_count"],
+                forks_count=data["forks_count"],
+                language=data.get("language"),
+                open_issues_count=data["open_issues_count"],
+                created_at=data["created_at"],
+                updated_at=data["updated_at"],
+                default_branch=data["default_branch"],
+            )
 
-    return {
-        "_stub": True,
-        "_note": "This is mock data. Real GitHub API integration coming soon.",
-        "query": query,
-        "total_count": len(results),
-        "items": results,
-    }
+            logger.info(f"Successfully fetched repo: {owner}/{repo}")
+            return repo_info.to_dict()
 
-
-async def get_repo_issues(
-    owner: str, repo: str, state: str = "open", limit: int = 10
-) -> dict[str, Any]:
-    """
-    Get issues for a repository.
-
-    Args:
-        owner: Repository owner
-        repo: Repository name
-        state: Issue state (open, closed, all)
-        limit: Maximum number of issues to return
-
-    Returns:
-        List of issues (stub data)
-    """
-    logger.debug(f"get_repo_issues() called with owner={owner}, repo={repo}, state={state}, limit={limit}")
-    issues = [
-        {
-            "id": i,
-            "number": i,
-            "title": f"Mock Issue #{i}: Something needs attention",
-            "body": f"This is a mock issue body for issue #{i}",
-            "state": state if state != "all" else ("open" if i % 2 == 0 else "closed"),
-            "html_url": f"https://github.com/{owner}/{repo}/issues/{i}",
-            "user": {
-                "login": f"user{i}",
-                "html_url": f"https://github.com/user{i}",
-            },
-            "labels": [
-                {"name": "bug", "color": "d73a4a"},
-                {"name": "enhancement", "color": "a2eeef"},
-            ][: i % 3],
-            "comments": i * 2,
-            "created_at": "2024-11-01T00:00:00Z",
-            "updated_at": "2024-12-16T00:00:00Z",
-        }
-        for i in range(1, min(limit, 10) + 1)
-    ]
-
-    return {
-        "_stub": True,
-        "_note": "This is mock data. Real GitHub API integration coming soon.",
-        "owner": owner,
-        "repo": repo,
-        "state": state,
-        "total_count": len(issues),
-        "issues": issues,
-    }
-
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error fetching repo {owner}/{repo}: {e.response.status_code}"
+            )
+            if e.response.status_code == 404:
+                return {"error": f"Repository '{owner}/{repo}' not found"}
+            elif e.response.status_code == 403:
+                return {"error": "Rate limit exceeded or access forbidden"}
+            else:
+                return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error fetching repo {owner}/{repo}: {e}")
+            return {"error": str(e)}

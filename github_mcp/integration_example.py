@@ -72,16 +72,20 @@ class SimpleAIWithTools:
 
             return {"tool": "get_user_repos", "args": {"username": username, "limit": 5}}
 
-        elif "search" in message_lower or "найди" in message_lower:
-            # Extract search query
-            query_start = (
-                message_lower.find("search") + 6
-                if "search" in message_lower
-                else message_lower.find("найди") + 5
-            )
-            query = user_message[query_start:].strip("'\" ")
+        elif "repo" in message_lower and "info" in message_lower:
+            # Extract owner and repo name
+            words = user_message.split()
+            owner = "octocat"
+            repo = "Hello-World"
+            for i, word in enumerate(words):
+                if "/" in word:
+                    parts = word.split("/")
+                    if len(parts) == 2:
+                        owner = parts[0].strip("'\"")
+                        repo = parts[1].strip("'\"")
+                        break
 
-            return {"tool": "search_repos", "args": {"query": query, "limit": 5}}
+            return {"tool": "get_repo_info", "args": {"owner": owner, "repo": repo}}
 
         return None
 
@@ -89,11 +93,15 @@ class SimpleAIWithTools:
         """Format tool result for presentation."""
         data = json.loads(result_json)
 
+        # Check for errors
+        if "error" in data:
+            return f"❌ Ошибка: {data['error']}"
+
         if tool_name == "get_user":
             return (
                 f"👤 Пользователь GitHub:\n"
                 f"   Логин: {data['login']}\n"
-                f"   Имя: {data['name']}\n"
+                f"   Имя: {data.get('name', 'N/A')}\n"
                 f"   Публичных репозиториев: {data['public_repos']}\n"
                 f"   Подписчиков: {data['followers']}\n"
                 f"   Подписок: {data['following']}\n"
@@ -104,18 +112,26 @@ class SimpleAIWithTools:
             repos = data["repositories"]
             result = f"📚 Репозитории пользователя {data['username']}:\n"
             for repo in repos:
+                lang = repo.get('language') or 'N/A'
                 result += (
-                    f"   • {repo['name']} ({repo['language']}) "
-                    f"⭐ {repo['stars']} 🍴 {repo['forks']}\n"
+                    f"   • {repo['name']} ({lang}) "
+                    f"⭐ {repo['stargazers_count']} 🍴 {repo['forks_count']}\n"
                 )
             return result
 
-        elif tool_name == "search_repos":
-            items = data["items"]
-            result = f"🔍 Результаты поиска '{data['query']}':\n"
-            for item in items:
-                result += f"   • {item['name']} ({item['language']}) ⭐ {item['stars']}\n"
-            return result
+        elif tool_name == "get_repo_info":
+            lang = data.get('language') or 'N/A'
+            desc = data.get('description') or 'Нет описания'
+            return (
+                f"📦 Репозиторий GitHub:\n"
+                f"   Название: {data['full_name']}\n"
+                f"   Описание: {desc}\n"
+                f"   Язык: {lang}\n"
+                f"   Звезды: {data['stargazers_count']} ⭐\n"
+                f"   Форки: {data['forks_count']} 🍴\n"
+                f"   Открытые issue: {data['open_issues_count']}\n"
+                f"   Ссылка: {data['html_url']}"
+            )
 
         # Fallback: return raw JSON
         return json.dumps(data, indent=2, ensure_ascii=False)
@@ -139,7 +155,7 @@ class SimpleAIWithTools:
                 "Я могу помочь вам с GitHub! Попробуйте:\n"
                 "- 'Покажи информацию о пользователе octocat'\n"
                 "- 'Покажи репозитории пользователя octocat'\n"
-                "- 'Найди репозитории telegram bot'"
+                "- 'Покажи информацию о репозитории octocat/Hello-World'"
             )
 
         # Call MCP tool
@@ -203,7 +219,7 @@ async def main():
         demo_queries = [
             "Покажи информацию о пользователе octocat",
             "Покажи репозитории пользователя octocat",
-            "Найди репозитории telegram bot",
+            "Покажи информацию о репозитории octocat/Hello-World",
         ]
 
         for query in demo_queries:

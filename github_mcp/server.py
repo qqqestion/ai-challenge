@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-GitHub MCP Server (Stub Implementation).
+GitHub MCP Server (Real Implementation).
 
-This is a Model Context Protocol server that provides stub tools
-for GitHub integration. In the future, these will be connected
-to the real GitHub API.
+This is a Model Context Protocol server that provides tools
+for GitHub integration using GitHub REST API.
 """
 
 import asyncio
@@ -27,8 +26,6 @@ from tools import (  # noqa: E402
     get_user,
     get_user_repos,
     get_repo_info,
-    search_repos,
-    get_repo_issues,
 )
 
 
@@ -98,54 +95,6 @@ TOOLS = [
             "required": ["owner", "repo"],
         },
     ),
-    Tool(
-        name="search_repos",
-        description="Search for GitHub repositories by query",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "Search query",
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Maximum number of results to return (default: 10)",
-                    "default": 10,
-                },
-            },
-            "required": ["query"],
-        },
-    ),
-    Tool(
-        name="get_repo_issues",
-        description="Get issues for a repository",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "owner": {
-                    "type": "string",
-                    "description": "Repository owner",
-                },
-                "repo": {
-                    "type": "string",
-                    "description": "Repository name",
-                },
-                "state": {
-                    "type": "string",
-                    "description": "Issue state: open, closed, or all (default: open)",
-                    "enum": ["open", "closed", "all"],
-                    "default": "open",
-                },
-                "limit": {
-                    "type": "number",
-                    "description": "Maximum number of issues to return (default: 10)",
-                    "default": 10,
-                },
-            },
-            "required": ["owner", "repo"],
-        },
-    ),
 ]
 
 
@@ -173,7 +122,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
     try:
         logger.debug(f"Executing tool: {name}")
-        
+
         if name == "get_user":
             result = await get_user(arguments["username"])
         elif name == "get_user_repos":
@@ -182,21 +131,12 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             )
         elif name == "get_repo_info":
             result = await get_repo_info(arguments["owner"], arguments["repo"])
-        elif name == "search_repos":
-            result = await search_repos(arguments["query"], arguments.get("limit", 10))
-        elif name == "get_repo_issues":
-            result = await get_repo_issues(
-                arguments["owner"],
-                arguments["repo"],
-                arguments.get("state", "open"),
-                arguments.get("limit", 10),
-            )
         else:
             logger.error(f"Unknown tool requested: {name}")
             raise ValueError(f"Unknown tool: {name}")
 
         import json
-        
+
         logger.debug(f"Tool {name} executed successfully")
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -209,27 +149,27 @@ async def main():
     """Run the MCP server."""
     try:
         logger.info("=" * 60)
-        logger.info("Starting GitHub MCP Server (Stub Implementation)")
+        logger.info("Starting GitHub MCP Server (Real Implementation)")
         logger.info(f"Python version: {sys.version}")
         logger.info(f"Server script: {__file__}")
         logger.info(f"Working directory: {Path.cwd()}")
         logger.info("=" * 60)
-        
+
         logger.debug("Creating stdio_server context...")
         async with stdio_server() as (read_stream, write_stream):
             logger.debug("stdio_server context created successfully")
             logger.debug(f"Read stream: {read_stream}")
             logger.debug(f"Write stream: {write_stream}")
-            
+
             logger.info("Initializing MCP server application...")
             init_options = app.create_initialization_options()
             logger.debug(f"Initialization options: {init_options}")
-            
+
             logger.info("Starting app.run()...")
             await app.run(read_stream, write_stream, init_options)
-            
+
             logger.info("Server stopped gracefully")
-            
+
     except Exception as e:
         logger.error(f"Fatal error in main(): {e}", exc_info=True)
         raise
@@ -244,4 +184,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Server crashed: {e}", exc_info=True)
         raise
-
