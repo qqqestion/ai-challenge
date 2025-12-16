@@ -5,7 +5,6 @@ from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
-from ..llm.modes import RickMode, ModePromptBuilder
 from ..config import get_logger
 from ..llm.models import ModelName
 from .message_processor import send_response
@@ -31,12 +30,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Только не задавай тупых вопросов, ладно? Хотя... *urp* кого я обманываю, 
 ты всё равно их зададешь.
 
+🔧 У меня есть доступ к GitHub инструментам - используй /tools чтобы посмотреть
+
 🌡️ Можешь настроить температуру моих ответов через /temperature
 
 Команды:
 /start - это сообщение
 /help - справка
 /commands - список всех команд
+/tools - показать GitHub инструменты
 /temperature - настройка температуры ответов
 /change_model - выбрать модель
 /reset - очистить историю
@@ -64,6 +66,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Просто пиши мне сообщения - я отвечу. Иногда саркастично, иногда полезно, 
 всегда гениально.
 
+🔧 **GitHub инструменты:**
+/tools - показать все доступные GitHub инструменты
+Я могу искать репозитории, смотреть issues, получать информацию о пользователях и многое другое!
+
 🌡️ **Настройка температуры:**
 /temperature - показать текущую температуру
 /temperature 0.0 - максимальная точность
@@ -73,6 +79,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⚙️ **Команды:**
 /start - начать заново
 /help - эта справка
+/commands - список всех команд
 /change_model - выбрать модель
 /reset - очистить историю разговора
 /stats - показать статистику использования
@@ -344,6 +351,9 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /help - подробная справка
 /commands - этот список команд
 
+🔧 **GitHub инструменты:**
+/tools - показать все доступные GitHub инструменты
+
 🌡️ **Настройки:**
 /temperature - показать текущую температуру
 /temperature <0.0-2.0> - установить температуру ответов
@@ -463,6 +473,85 @@ async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TY
         f"Модель установлена: {model.value}",
         reply_markup=keyboard,
     )
+
+
+async def tools_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /tools command - show available MCP tools.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} requested tools list")
+
+    llm_integration = context.bot_data["llm_integration"]
+    mcp_manager = llm_integration.mcp_manager
+
+    if not mcp_manager or not mcp_manager.is_initialized:
+        message = """*urp* Извини, но инструменты GitHub сейчас недоступны.
+MCP сервер не инициализирован или отключен.
+
+*burp* Попробуй перезапустить бота или проверь настройки."""
+        await update.message.reply_text(message)
+        return
+
+    tools = mcp_manager.tools
+
+    if not tools:
+        message = """*urp* Хм, странно... MCP сервер работает, но инструментов нет.
+Может быть, они еще не загрузились. Попробуй позже."""
+        await update.message.reply_text(message)
+        return
+
+    # Build tools list message
+    tools_lines = [
+        "🔧 **Доступные GitHub инструменты:**",
+        "",
+        "*urp* Вот что я могу сделать с GitHub API:",
+        "",
+    ]
+
+    for i, tool in enumerate(tools, 1):
+        name = tool["name"]
+        description = tool["description"]
+        schema = tool.get("input_schema", {})
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+
+        # Add tool header
+        tools_lines.append(f"**{i}. {name}**")
+        tools_lines.append(f"   {description}")
+
+        # Add parameters if any
+        if properties:
+            tools_lines.append("   ")
+            tools_lines.append("   *Параметры:*")
+            for param_name, param_info in properties.items():
+                param_type = param_info.get("type", "any")
+                param_desc = param_info.get("description", "")
+                is_required = param_name in required
+                req_marker = "обязательный" if is_required else "опциональный"
+                tools_lines.append(
+                    f"   • `{param_name}` ({param_type}, {req_marker}) - {param_desc}"
+                )
+
+        tools_lines.append("")
+
+    tools_lines.extend(
+        [
+            "*burp* Просто попроси меня что-нибудь сделать с GitHub,",
+            "и я автоматически использую нужный инструмент!",
+            "",
+            "Например:",
+            "• 'Покажи информацию о пользователе octocat'",
+            "• 'Найди репозитории по запросу telegram bot'",
+            "• 'Покажи issues в репозитории python/cpython'",
+        ]
+    )
+
+    tools_text = "\n".join(tools_lines)
+    await update.message.reply_text(tools_text)
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

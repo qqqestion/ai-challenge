@@ -62,6 +62,12 @@ class Settings(BaseSettings):
         default=False,
         description="Verify SSL certificates for Telegram API requests"
     )
+    
+    # MCP Settings
+    mcp_enabled: bool = Field(
+        default=True,
+        description="Enable MCP (Model Context Protocol) tools integration"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

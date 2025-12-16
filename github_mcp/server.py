@@ -9,13 +9,21 @@ to the real GitHub API.
 
 import asyncio
 import logging
+import sys
+from pathlib import Path
 from typing import Any
 
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+# Add current directory to path for imports (must be before other imports)
+current_dir = Path(__file__).parent
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
 
-from tools import (
+# MCP and local imports (after sys.path modification)
+from mcp.server import Server  # noqa: E402
+from mcp.server.stdio import stdio_server  # noqa: E402
+from mcp.types import Tool, TextContent  # noqa: E402
+
+from tools import (  # noqa: E402
     get_user,
     get_user_repos,
     get_repo_info,
@@ -24,8 +32,12 @@ from tools import (
 )
 
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with more verbose output
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger("github-mcp-server")
 
 
@@ -140,6 +152,7 @@ TOOLS = [
 @app.list_tools()
 async def list_tools() -> list[Tool]:
     """List all available tools."""
+    logger.debug(f"list_tools() called, returning {len(TOOLS)} tools")
     return TOOLS
 
 
@@ -155,9 +168,12 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     Returns:
         Tool result as TextContent
     """
-    logger.info(f"Tool called: {name} with arguments: {arguments}")
+    logger.info(f"call_tool() invoked: {name}")
+    logger.debug(f"Arguments: {arguments}")
 
     try:
+        logger.debug(f"Executing tool: {name}")
+        
         if name == "get_user":
             result = await get_user(arguments["username"])
         elif name == "get_user_repos":
@@ -176,24 +192,56 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 arguments.get("limit", 10),
             )
         else:
+            logger.error(f"Unknown tool requested: {name}")
             raise ValueError(f"Unknown tool: {name}")
 
         import json
-
+        
+        logger.debug(f"Tool {name} executed successfully")
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     except Exception as e:
-        logger.error(f"Error executing tool {name}: {e}")
+        logger.error(f"Error executing tool {name}: {e}", exc_info=True)
         return [TextContent(type="text", text=f"Error: {str(e)}")]
 
 
 async def main():
     """Run the MCP server."""
-    logger.info("Starting GitHub MCP Server (Stub Implementation)")
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(read_stream, write_stream, app.create_initialization_options())
+    try:
+        logger.info("=" * 60)
+        logger.info("Starting GitHub MCP Server (Stub Implementation)")
+        logger.info(f"Python version: {sys.version}")
+        logger.info(f"Server script: {__file__}")
+        logger.info(f"Working directory: {Path.cwd()}")
+        logger.info("=" * 60)
+        
+        logger.debug("Creating stdio_server context...")
+        async with stdio_server() as (read_stream, write_stream):
+            logger.debug("stdio_server context created successfully")
+            logger.debug(f"Read stream: {read_stream}")
+            logger.debug(f"Write stream: {write_stream}")
+            
+            logger.info("Initializing MCP server application...")
+            init_options = app.create_initialization_options()
+            logger.debug(f"Initialization options: {init_options}")
+            
+            logger.info("Starting app.run()...")
+            await app.run(read_stream, write_stream, init_options)
+            
+            logger.info("Server stopped gracefully")
+            
+    except Exception as e:
+        logger.error(f"Fatal error in main(): {e}", exc_info=True)
+        raise
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logger.debug("Script started as __main__")
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Server interrupted by user")
+    except Exception as e:
+        logger.error(f"Server crashed: {e}", exc_info=True)
+        raise
 

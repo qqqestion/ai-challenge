@@ -7,19 +7,21 @@ from .config import get_settings, setup_logger, get_logger
 from .llm import YandexLLMClient, ResponseProcessor
 from .bot import RickBot, StateManager
 from .bot.llm_integration import LLMIntegration
+from .bot.mcp_manager import MCPManager
 from .utils.database import DatabaseManager
 
 # Global references for cleanup
 _bot_instance = None
 _llm_client = None
 _db_manager = None
+_mcp_manager = None
 
 
 async def initialize_application():
     """Initialize all application components.
 
     Returns:
-        Tuple of (bot, llm_client, db_manager) instances
+        Tuple of (bot, llm_client, db_manager, mcp_manager) instances
     """
     # Load settings
     settings = get_settings()
@@ -66,12 +68,40 @@ async def initialize_application():
     )
     logger.info("✓ State manager initialized")
 
+    # Initialize MCP manager (optional)
+    mcp_manager = None
+    if settings.mcp_enabled:
+        try:
+            logger.info("Initializing MCP manager...")
+            mcp_manager = MCPManager()
+            
+            # Run initialization in a separate task with proper exception handling
+            try:
+                if await mcp_manager.initialize():
+                    logger.info("✓ MCP manager initialized")
+                else:
+                    logger.warning("⚠ MCP manager initialization failed, continuing without tools")
+                    mcp_manager = None
+            except asyncio.TimeoutError:
+                logger.warning("⚠ MCP manager initialization timed out, continuing without tools")
+                mcp_manager = None
+            except Exception as init_error:
+                logger.warning(f"⚠ MCP manager initialization error: {init_error}, continuing without tools")
+                mcp_manager = None
+                
+        except Exception as e:
+            logger.warning(f"⚠ MCP manager creation error: {e}, continuing without tools")
+            mcp_manager = None
+    else:
+        logger.info("MCP integration disabled (set MCP_ENABLED=true to enable)")
+
     # Initialize LLM integration
     logger.info("Initializing LLM integration...")
     llm_integration = LLMIntegration(
         llm_client=llm_client,
         state_manager=state_manager,
-        response_processor=response_processor
+        response_processor=response_processor,
+        mcp_manager=mcp_manager
     )
     logger.info("✓ LLM integration initialized")
 
@@ -88,16 +118,17 @@ async def initialize_application():
     logger.info("Initialization complete!")
     logger.info("=" * 60)
 
-    return bot, llm_client, db_manager
+    return bot, llm_client, db_manager, mcp_manager
 
 
-async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_manager: DatabaseManager):
+async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_manager: DatabaseManager, mcp_manager: MCPManager = None):
     """Cleanup application resources.
 
     Args:
         bot: Rick bot instance
         llm_client: LLM client instance
         db_manager: Database manager instance
+        mcp_manager: MCP manager instance (optional)
     """
     logger = get_logger()
     logger.info("=" * 60)
@@ -115,6 +146,15 @@ async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_mana
         await llm_client.close()
         logger.info("✓ LLM client closed")
 
+        # Close MCP manager
+        if mcp_manager:
+            try:
+                logger.info("Closing MCP manager...")
+                await mcp_manager.cleanup()
+                logger.info("✓ MCP manager closed")
+            except Exception as e:
+                logger.warning(f"Error closing MCP manager: {e}")
+
         # Close database connection
         logger.info("Closing database connection...")
         await db_manager.close()
@@ -130,16 +170,17 @@ async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_mana
 
 async def main():
     """Main application entry point."""
-    global _bot_instance, _llm_client, _db_manager
+    global _bot_instance, _llm_client, _db_manager, _mcp_manager
 
     logger = get_logger()
 
     try:
         # Initialize
-        bot, llm_client, db_manager = await initialize_application()
+        bot, llm_client, db_manager, mcp_manager = await initialize_application()
         _bot_instance = bot
         _llm_client = llm_client
         _db_manager = db_manager
+        _mcp_manager = mcp_manager
 
         # Start bot
         await bot.start()
@@ -189,7 +230,7 @@ async def main():
     finally:
         # Cleanup
         if _bot_instance and _llm_client and _db_manager:
-            await cleanup_application(_bot_instance, _llm_client, _db_manager)
+            await cleanup_application(_bot_instance, _llm_client, _db_manager, _mcp_manager)
 
 
 def run():

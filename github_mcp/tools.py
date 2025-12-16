@@ -5,7 +5,10 @@ These are mock implementations that return example data.
 In the future, these will be replaced with real GitHub API calls.
 """
 
+import logging
 from typing import Any
+
+logger = logging.getLogger("github-mcp-server.tools")
 
 
 async def get_user(username: str) -> dict[str, Any]:
@@ -18,6 +21,7 @@ async def get_user(username: str) -> dict[str, Any]:
     Returns:
         User information (stub data)
     """
+    logger.debug(f"get_user() called with username={username}")
     return {
         "_stub": True,
         "_note": "This is mock data. Real GitHub API integration coming soon.",
@@ -46,6 +50,7 @@ async def get_user_repos(username: str, limit: int = 10) -> dict[str, Any]:
     Returns:
         List of repositories (stub data)
     """
+    logger.debug(f"get_user_repos() called with username={username}, limit={limit}")
     repos = [
         {
             "id": i,
@@ -83,6 +88,7 @@ async def get_repo_info(owner: str, repo: str) -> dict[str, Any]:
     Returns:
         Repository information (stub data)
     """
+    logger.debug(f"get_repo_info() called with owner={owner}, repo={repo}")
     return {
         "_stub": True,
         "_note": "This is mock data. Real GitHub API integration coming soon.",
@@ -122,6 +128,7 @@ async def search_repos(query: str, limit: int = 10) -> dict[str, Any]:
     Returns:
         Search results (stub data)
     """
+    logger.debug(f"search_repos() called with query={query}, limit={limit}")
     results = [
         {
             "id": i,
@@ -160,6 +167,7 @@ async def get_repo_issues(
     Returns:
         List of issues (stub data)
     """
+    logger.debug(f"get_repo_issues() called with owner={owner}, repo={repo}, state={state}, limit={limit}")
     issues = [
         {
             "id": i,

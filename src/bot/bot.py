@@ -22,6 +22,7 @@ from .handlers import (
     stats_command,
     summarization_on_command,
     summarization_off_command,
+    tools_command,
     handle_message,
     error_handler
 )
@@ -83,6 +84,7 @@ class RickBot:
         app.add_handler(CommandHandler("stats", stats_command))
         app.add_handler(CommandHandler("summarization_on", summarization_on_command))
         app.add_handler(CommandHandler("summarization_off", summarization_off_command))
+        app.add_handler(CommandHandler("tools", tools_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -108,6 +110,7 @@ class RickBot:
             # BotCommand("start", "Начать работу с ботом"),
             BotCommand("help", "Подробная справка"),
             BotCommand("commands", "Список всех команд"),
+            BotCommand("tools", "Показать доступные GitHub инструменты"),
             BotCommand("temperature", "Настройка температуры"),
             BotCommand("long_prompt", "Отправить длинный заранее заданный промпт"),
             BotCommand("change_model", "Выбрать модель"),
@@ -154,9 +157,24 @@ class RickBot:
         """Stop the bot gracefully."""
         logger.info("Stopping Rick Bot...")
         
-        await self.application.updater.stop()
-        await self.application.stop()
-        await self.application.shutdown()
+        # Stop updater only if it's running
+        try:
+            if self.application.updater.running:
+                await self.application.updater.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping updater: {e}")
+        
+        # Stop application
+        try:
+            await self.application.stop()
+        except Exception as e:
+            logger.warning(f"Error stopping application: {e}")
+        
+        # Shutdown application
+        try:
+            await self.application.shutdown()
+        except Exception as e:
+            logger.warning(f"Error shutting down application: {e}")
         
         logger.info("Bot stopped successfully")
     
