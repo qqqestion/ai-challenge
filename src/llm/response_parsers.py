@@ -77,7 +77,11 @@ class GPTResponseParser(ResponseParser):
 
         first_choice = choices[0]
         message = first_choice.get("message", {})
-        content = message.get("content", "")
+        content = message.get("content")
+
+        # Handle None/null content (happens with tool_calls)
+        if content is None:
+            content = ""
 
         if isinstance(content, list):
             text = "".join(
@@ -85,10 +89,14 @@ class GPTResponseParser(ResponseParser):
                 for part in content
             )
         else:
-            text = str(content)
+            text = str(content) if content else ""
 
         text = text.strip()
         if not text:
+            # Check if this is a tool_calls response
+            if message.get("tool_calls"):
+                logger.debug("Response has tool_calls but no text content")
+                return ""
             raise ValueError("Empty text in response")
 
         logger.debug(f"Extracted text: {len(text)} characters")
@@ -132,7 +140,11 @@ class GrokResponseParser(ResponseParser):
 
         first_choice = choices[0]
         message = first_choice.get("message", {})
-        content = message.get("content", "")
+        content = message.get("content")
+
+        # Handle None/null content (happens with tool_calls)
+        if content is None:
+            content = ""
 
         if isinstance(content, list):
             text = "".join(
@@ -140,10 +152,14 @@ class GrokResponseParser(ResponseParser):
                 for part in content
             )
         else:
-            text = str(content)
+            text = str(content) if content else ""
 
         text = text.strip()
         if not text:
+            # Check if this is a tool_calls response
+            if message.get("tool_calls"):
+                logger.debug("Response has tool_calls but no text content")
+                return ""
             raise ValueError("Empty text in response")
 
         logger.debug(f"Extracted text: {len(text)} characters")

@@ -75,6 +75,8 @@ class YandexLLMClient:
         temperature: float,
         max_tokens: Optional[int] = None,
         model: Optional[Union[str, ModelName]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        tool_choice: str = "auto",
     ) -> Dict:
         """Send prompt to Eliza REST API.
         
@@ -83,6 +85,8 @@ class YandexLLMClient:
             temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Override default max_tokens
             model: Override model for this request
+            tools: List of tools in OpenAI function calling format (optional)
+            tool_choice: Tool choice strategy - "auto", "none", or specific tool (default: "auto")
             
         Returns:
             API response as dictionary
@@ -101,6 +105,12 @@ class YandexLLMClient:
             "temperature": temperature,
             "max_tokens": max_tokens or self.max_tokens,
         }
+
+        # Add tools if provided
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = tool_choice
+            logger.debug(f"Added {len(tools)} tools to API request with tool_choice={tool_choice}")
 
         if self._is_claude_model(selected_model):
             # Claude expects system prompt in top-level "system" field, not as a message

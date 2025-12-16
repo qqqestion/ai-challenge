@@ -1,5 +1,6 @@
 """Integration layer between Telegram bot and LLM API."""
 
+import json
 from typing import Any, Dict, Optional
 
 from ..llm import (
@@ -15,7 +16,6 @@ from ..llm.response_parsers import (
     GrokResponseParser,
 )
 from ..llm.modes import build_mode_prompt
-from ..llm.prompts import build_tools_enhanced_prompt, format_tool_result
 from .state_manager import StateManager
 from .mcp_manager import MCPManager
 from ..config import get_logger
@@ -72,23 +72,25 @@ class LLMIntegration:
         # Build prompt with NORMAL mode (only mode available)
         system_prompt, user_message = build_mode_prompt(RickMode.NORMAL, message)
 
-        # Enhance system prompt with tools if MCP is available
-        if self.mcp_manager and self.mcp_manager.is_initialized:
-            tools_desc = self.mcp_manager.get_tools_description()
-            tool_format = self.mcp_manager.get_tool_call_format()
-            system_prompt = build_tools_enhanced_prompt(
-                system_prompt,
-                tools_desc,
-                tool_format
-            )
-            logger.debug("Enhanced system prompt with MCP tools")
-
         # Build complete prompt structure with conversation history
         messages = build_rick_prompt(
             user_message=user_message,
             system_prompt=system_prompt,
-            conversation_history=user_state.conversation_history # TODO add tools to api call 
+            conversation_history=user_state.conversation_history
         )
+
+        # Get tools for API if MCP is available
+        tools = None
+        logger.info(f"MCP manager status: available={self.mcp_manager is not None}, "
+                   f"initialized={self.mcp_manager.is_initialized if self.mcp_manager else False}")
+        
+        if self.mcp_manager and self.mcp_manager.is_initialized:
+            tools = self.mcp_manager.get_tools_for_api()
+            logger.info(f"Got {len(tools) if tools else 0} tools from MCP manager")
+            if tools:
+                logger.debug(f"Using {len(tools)} MCP tools in API request")
+        else:
+            logger.warning("MCP manager not available or not initialized - no tools will be used")
 
         # Send to LLM API with user-specific temperature
         try:
@@ -103,11 +105,17 @@ class LLMIntegration:
                     messages,
                     temperature=user_temperature,
                     model=user_state.model,
+                    tools=tools,
+                    tool_choice="auto" if tools else "none",
                 )
 
                 # Extract text from response
                 self.response_processor.parser = self._select_parser(user_state.model)
                 response_text = self.response_processor.extract_text(response)
+                
+                # Handle None content (can happen with tool_calls)
+                if response_text is None:
+                    response_text = ""
 
                 # Record metadata for statistics
                 metadata = self.response_processor.get_metadata(response)
@@ -121,53 +129,104 @@ class LLMIntegration:
                     if input_tokens > 0 or output_tokens > 0 or cost > 0:
                         await user_state.add_usage_stats(input_tokens, output_tokens, cost)
 
-                # Check if LLM wants to call a tool
-                if self.mcp_manager and self.mcp_manager.is_initialized:
-                    tool_call = self.mcp_manager.parse_tool_call(response_text)
+                # Check if LLM wants to call tools
+                logger.debug(f"Checking for tool calls: mcp_manager={self.mcp_manager is not None}, "
+                           f"initialized={self.mcp_manager.is_initialized if self.mcp_manager else False}, "
+                           f"tools_provided={tools is not None and len(tools) > 0 if tools else False}")
+                
+                if self.mcp_manager and self.mcp_manager.is_initialized and tools:
+                    tool_calls = self.mcp_manager.extract_tool_calls_from_response(response)
+                    logger.debug(f"Extracted {len(tool_calls)} tool call(s) from response")
 
-                    if tool_call:
-                        logger.info(f"LLM requested tool call: {tool_call['name']}")
+                    if tool_calls:
+                        logger.info(f"LLM requested {len(tool_calls)} tool call(s)")
+                        logger.debug(f"Response content before tool execution: '{response_text}'")
 
-                        # Execute tool
-                        tool_result = await self.mcp_manager.call_tool(
-                            tool_call["name"],
-                            tool_call["arguments"]
-                        )
-
-                        # Format tool result for context
-                        tool_result_text = format_tool_result(
-                            tool_call["name"],
-                            tool_result,
-                            tool_call.get("reasoning", "")
-                        )
-
-                        # Add tool call and result to history
-                        tool_call_history.append({
-                            "call": tool_call,
-                            "result": tool_result_text
-                        })
-
-                        # Add tool result to messages for next iteration
-                        messages.append({
+                        # Add assistant message with tool calls to history
+                        # Build tool_calls in API format for message history
+                        assistant_tool_calls = []
+                        for tc in tool_calls:
+                            assistant_tool_calls.append({
+                                "id": tc.get("id"),
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": json.dumps(tc["arguments"]) if isinstance(tc["arguments"], dict) else tc["arguments"]
+                                }
+                            })
+                        
+                        assistant_message = {
                             "role": "assistant",
-                            "content": response_text
-                        })
-                        messages.append({
-                            "role": "user",
-                            "content": tool_result_text
-                        })
+                            "content": response_text if response_text else None
+                        }
+                        if assistant_tool_calls:
+                            assistant_message["tool_calls"] = assistant_tool_calls
+                        
+                        messages.append(assistant_message)
+                        logger.debug(f"Added assistant message with {len(assistant_tool_calls)} tool_calls")
+
+                        # Execute each tool and collect results
+                        for tool_call in tool_calls:
+                            tool_name = tool_call["name"]
+                            tool_arguments = tool_call["arguments"]
+                            tool_call_id = tool_call.get("id")
+
+                            logger.info(f"Executing tool: {tool_name}")
+
+                            # Execute tool
+                            tool_result = await self.mcp_manager.call_tool(
+                                tool_name,
+                                tool_arguments
+                            )
+
+                            # Format result text
+                            if tool_result.get("success"):
+                                result_content = str(tool_result.get("result", ""))
+                            else:
+                                result_content = f"Error: {tool_result.get('error', 'Unknown error')}"
+
+                            # Add to tool call history for summary
+                            tool_call_history.append({
+                                "name": tool_name,
+                                "arguments": tool_arguments,
+                                "result": result_content
+                            })
+
+                            # Add tool result message in OpenAI format
+                            tool_message = {
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": result_content
+                            }
+                            
+                            messages.append(tool_message)
+                            logger.debug(f"Added tool result message: role=tool, tool_call_id={tool_call_id}")
 
                         # Continue to next iteration
                         continue
+                    else:
+                        logger.debug("No tool_calls found in response")
+                else:
+                    if not self.mcp_manager:
+                        logger.debug("MCP manager is not available")
+                    elif not self.mcp_manager.is_initialized:
+                        logger.debug("MCP manager is not initialized")
+                    elif not tools:
+                        logger.debug("No tools provided to LLM")
 
                 # No tool call - this is the final response
-                formatted_response = response_text.strip()
+                formatted_response = response_text.strip() if response_text else ""
+                
+                # If response is empty and we have no tool history, something went wrong
+                if not formatted_response and not tool_call_history:
+                    logger.warning(f"Empty response received for user {user_id}")
+                    formatted_response = "Извините, я получил пустой ответ. Попробуйте еще раз."
 
                 # Add tool call summary if any tools were used
                 if tool_call_history:
                     tool_summary = "\n\n🔧 Tools used:\n"
                     for i, call_data in enumerate(tool_call_history, 1):
-                        tool_name = call_data["call"]["name"]
+                        tool_name = call_data["name"]
                         tool_summary += f"{i}. {tool_name}\n"
                     formatted_response = formatted_response + tool_summary
 

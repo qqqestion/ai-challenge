@@ -10,6 +10,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from ..config import get_logger
+from ..llm.response_parsers import _unwrap_response
 
 logger = get_logger(__name__)
 
@@ -179,65 +180,40 @@ class MCPManager:
             logger.error(f"Failed to load tools: {e}", exc_info=True)
             self.tools = []
 
-    def get_tools_description(self) -> str:
-        """Get formatted description of available tools for LLM prompt.
+    def get_tools_for_api(self) -> List[Dict[str, Any]]:
+        """Get tools in OpenAI function calling format for API requests.
 
         Returns:
-            Formatted string describing all available tools
+            List of tools in OpenAI format:
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "tool_name",
+                        "description": "Tool description",
+                        "parameters": {...}
+                    }
+                },
+                ...
+            ]
         """
         if not self.tools:
-            return ""
+            return []
 
-        lines = ["Available GitHub tools:"]
-        for i, tool in enumerate(self.tools, 1):
-            name = tool["name"]
-            description = tool["description"]
-            schema = tool.get("input_schema", {})
-            properties = schema.get("properties", {})
-            required = schema.get("required", [])
+        api_tools = []
+        for tool in self.tools:
+            api_tool = {
+                "type": "function",
+                "function": {
+                    "name": tool["name"],
+                    "description": tool["description"],
+                    "parameters": tool.get("input_schema", {})
+                }
+            }
+            api_tools.append(api_tool)
 
-            # Build parameter list
-            params = []
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "any")
-                param_desc = param_info.get("description", "")
-                is_required = param_name in required
-                req_marker = " (required)" if is_required else " (optional)"
-                params.append(f"  - {param_name}: {param_type}{req_marker} - {param_desc}")
-
-            tool_desc = f"{i}. {name}() - {description}"
-            if params:
-                tool_desc += "\n" + "\n".join(params)
-
-            lines.append(tool_desc)
-
-        return "\n".join(lines)
-
-    def get_tool_call_format(self) -> str:
-        """Get instructions for LLM on how to call tools.
-
-        Returns:
-            Formatted string with tool calling instructions
-        """
-        return """
-To use a tool, respond with JSON in this format:
-{
-  "tool_call": {
-    "name": "tool_name",
-    "arguments": {"arg1": "value1", "arg2": "value2"}
-  },
-  "reasoning": "Brief explanation why you need this tool"
-}
-
-After receiving tool results, you can either:
-- Call another tool if needed (same JSON format)
-- Provide final answer to user in natural language
-
-Important:
-- You can call maximum 3 tools per user message
-- If tool is not needed, just respond normally without JSON
-- Tool results will be provided as context for your next response
-"""
+        logger.debug(f"Converted {len(api_tools)} MCP tools to OpenAI format")
+        return api_tools
 
     async def call_tool(
         self,
@@ -305,54 +281,136 @@ Important:
                 "error": str(e)
             }
 
-    def parse_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
-        """Parse LLM response for tool call request.
+    def extract_tool_calls_from_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract tool calls from LLM API response.
+
+        Supports multiple response formats:
+        - OpenAI: response["choices"][0]["message"]["tool_calls"]
+        - Claude: similar structure
+        - Fallback: parse from content text
 
         Args:
-            text: LLM response text
+            response: API response dictionary
 
         Returns:
-            Parsed tool call dict or None if no tool call found
+            List of tool calls in format:
+            [
+                {
+                    "id": "call_abc123",  # optional
+                    "name": "tool_name",
+                    "arguments": {"arg": "value"}
+                },
+                ...
+            ]
         """
         try:
-            # Try to find JSON in response
-            text = text.strip()
+            logger.debug(f"Extracting tool calls from response. Response keys: {response.keys()}")
+            
+            # Unwrap response if it's wrapped (e.g., response["response"]["choices"])
+            payload = _unwrap_response(response)
+            logger.debug(f"After unwrapping, payload keys: {payload.keys()}")
+            
+            # Try OpenAI/standard format first
+            choices = payload.get("choices", [])
+            logger.debug(f"Found {len(choices)} choices in response")
+            
+            if choices:
+                message = choices[0].get("message", {})
+                logger.debug(f"Message keys: {message.keys()}")
+                
+                tool_calls = message.get("tool_calls", [])
+                logger.debug(f"Found {len(tool_calls)} tool_calls in message")
 
-            # Check if response starts with JSON
-            if text.startswith("{") and "tool_call" in text:
-                # Find the JSON block
-                brace_count = 0
-                json_end = 0
-                for i, char in enumerate(text):
-                    if char == "{":
-                        brace_count += 1
-                    elif char == "}":
-                        brace_count -= 1
-                        if brace_count == 0:
-                            json_end = i + 1
-                            break
+                if tool_calls:
+                    extracted_calls = []
+                    for call in tool_calls:
+                        function_data = call.get("function", {})
+                        arguments = function_data.get("arguments", "{}")
 
-                if json_end > 0:
-                    json_str = text[:json_end]
-                    data = json.loads(json_str)
+                        # Parse arguments if string
+                        if isinstance(arguments, str):
+                            try:
+                                arguments = json.loads(arguments)
+                            except json.JSONDecodeError:
+                                logger.error(f"Failed to parse tool arguments: {arguments}")
+                                continue
 
-                    if "tool_call" in data:
-                        tool_call = data["tool_call"]
-                        if "name" in tool_call and "arguments" in tool_call:
-                            logger.info(f"Parsed tool call: {tool_call['name']}")
-                            return {
-                                "name": tool_call["name"],
-                                "arguments": tool_call["arguments"],
-                                "reasoning": data.get("reasoning", "")
-                            }
+                        extracted_call = {
+                            "id": call.get("id"),
+                            "name": function_data.get("name"),
+                            "arguments": arguments
+                        }
+                        extracted_calls.append(extracted_call)
+                        logger.info(f"Extracted tool call: {extracted_call['name']}")
 
-            return None
+                    logger.info(f"Successfully extracted {len(extracted_calls)} tool call(s)")
+                    return extracted_calls
+                else:
+                    logger.debug("No tool_calls found in message")
 
-        except json.JSONDecodeError as e:
-            logger.debug(f"No valid tool call JSON found in response: {e}")
-            return None
+            # Fallback: try to parse from content text (old format support)
+            # Use payload (unwrapped) instead of original response
+            fallback_choices = payload.get("choices", [])
+            if fallback_choices:
+                content = fallback_choices[0].get("message", {}).get("content", "")
+                if content and isinstance(content, str):
+                    logger.debug("Trying legacy format parsing")
+                    legacy_call = self._parse_legacy_tool_call(content)
+                    if legacy_call:
+                        logger.info(f"Extracted legacy tool call: {legacy_call['name']}")
+                        return [legacy_call]
+
+            logger.debug("No tool calls found in response")
+            return []
+
         except Exception as e:
-            logger.error(f"Error parsing tool call: {e}", exc_info=True)
+            logger.error(f"Error extracting tool calls from response: {e}", exc_info=True)
+            return []
+
+    def _parse_legacy_tool_call(self, text: str) -> Optional[Dict[str, Any]]:
+        """Parse tool call from legacy text format (fallback).
+
+        Args:
+            text: Response text that might contain JSON tool call
+
+        Returns:
+            Parsed tool call or None
+        """
+        try:
+            text = text.strip()
+            if not text.startswith("{"):
+                return None
+
+            # Find the JSON block
+            brace_count = 0
+            json_end = 0
+            for i, char in enumerate(text):
+                if char == "{":
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_end = i + 1
+                        break
+
+            if json_end > 0:
+                json_str = text[:json_end]
+                data = json.loads(json_str)
+
+                if "tool_call" in data:
+                    tool_call = data["tool_call"]
+                    if "name" in tool_call and "arguments" in tool_call:
+                        logger.info(f"Parsed legacy tool call: {tool_call['name']}")
+                        return {
+                            "id": None,
+                            "name": tool_call["name"],
+                            "arguments": tool_call["arguments"]
+                        }
+
+            return None
+
+        except Exception as e:
+            logger.debug(f"Failed to parse legacy tool call: {e}")
             return None
 
     async def cleanup(self):
