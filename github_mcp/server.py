@@ -26,6 +26,8 @@ from tools import (  # noqa: E402
     get_user,
     get_user_repos,
     get_repo_info,
+    get_user_events,
+    get_repo_events,
 )
 
 
@@ -95,6 +97,48 @@ TOOLS = [
             "required": ["owner", "repo"],
         },
     ),
+    Tool(
+        name="get_user_events",
+        description="Get list of events for a GitHub user",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "username": {
+                    "type": "string",
+                    "description": "GitHub username",
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of events to return (default: 30, max: 100)",
+                    "default": 30,
+                },
+            },
+            "required": ["username"],
+        },
+    ),
+    Tool(
+        name="get_repo_events",
+        description="Get list of events for a GitHub repository",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": "Repository owner (username or organization)",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Repository name",
+                },
+                "limit": {
+                    "type": "number",
+                    "description": "Maximum number of events to return (default: 30, max: 100)",
+                    "default": 30,
+                },
+            },
+            "required": ["owner", "repo"],
+        },
+    ),
 ]
 
 
@@ -131,6 +175,14 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             )
         elif name == "get_repo_info":
             result = await get_repo_info(arguments["owner"], arguments["repo"])
+        elif name == "get_user_events":
+            result = await get_user_events(
+                arguments["username"], arguments.get("limit", 30)
+            )
+        elif name == "get_repo_events":
+            result = await get_repo_events(
+                arguments["owner"], arguments["repo"], arguments.get("limit", 30)
+            )
         else:
             logger.error(f"Unknown tool requested: {name}")
             raise ValueError(f"Unknown tool: {name}")

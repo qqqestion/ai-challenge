@@ -23,6 +23,10 @@ from .handlers import (
     summarization_on_command,
     summarization_off_command,
     tools_command,
+    set_github_username_command,
+    daily_summary_on_command,
+    daily_summary_off_command,
+    test_daily_summary_command,
     handle_message,
     error_handler
 )
@@ -85,6 +89,10 @@ class RickBot:
         app.add_handler(CommandHandler("summarization_on", summarization_on_command))
         app.add_handler(CommandHandler("summarization_off", summarization_off_command))
         app.add_handler(CommandHandler("tools", tools_command))
+        app.add_handler(CommandHandler("set_github_username", set_github_username_command))
+        app.add_handler(CommandHandler("daily_summary_on", daily_summary_on_command))
+        app.add_handler(CommandHandler("daily_summary_off", daily_summary_off_command))
+        app.add_handler(CommandHandler("test_daily_summary", test_daily_summary_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -118,6 +126,10 @@ class RickBot:
             BotCommand("stats", "Показать статистику использования"),
             BotCommand("summarization_on", "Включить суммаризацию чата"),
             BotCommand("summarization_off", "Выключить суммаризацию чата"),
+            BotCommand("set_github_username", "Установить GitHub username"),
+            BotCommand("daily_summary_on", "Включить ежедневное саммари GitHub"),
+            BotCommand("daily_summary_off", "Выключить ежедневное саммари"),
+            BotCommand("test_daily_summary", "Протестировать саммари"),
         ]
         
         try:

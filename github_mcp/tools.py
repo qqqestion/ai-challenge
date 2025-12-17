@@ -91,6 +91,100 @@ class UserReposResponse:
             "repositories": [repo.to_dict() for repo in self.repositories],
         }
 
+@dataclass
+class CommitInfo:
+    author_login: str
+    message: str
+    sha: str
+    commit_date: str
+    parents: list[str]
+
+
+@dataclass
+class ActorInfo:
+    """Actor information from GitHub event."""
+
+    login: str
+    id: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class RepoReference:
+    """Repository reference from GitHub event."""
+
+    id: int
+    name: str
+    url: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+
+
+@dataclass
+class EventInfo:
+    """GitHub event information."""
+
+    id: str
+    type: str
+    actor: ActorInfo
+    repo: RepoReference
+    payload: dict[str, Any]
+    public: bool
+    created_at: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "type": self.type,
+            "actor": self.actor.to_dict(),
+            "repo": self.repo.to_dict(),
+            "payload": self.payload,
+            "public": self.public,
+            "created_at": self.created_at,
+        }
+
+
+@dataclass
+class UserEventsResponse:
+    """Response for user events list."""
+
+    username: str
+    total_count: int
+    events: list[EventInfo]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "username": self.username,
+            "total_count": self.total_count,
+            "events": [event.to_dict() for event in self.events],
+        }
+
+
+@dataclass
+class RepoEventsResponse:
+    """Response for repository events list."""
+
+    owner: str
+    repo: str
+    total_count: int
+    events: list[EventInfo]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "owner": self.owner,
+            "repo": self.repo,
+            "total_count": self.total_count,
+            "events": [event.to_dict() for event in self.events],
+        }
+
 
 async def get_user(username: str) -> dict[str, Any]:
     """
@@ -265,4 +359,162 @@ async def get_repo_info(owner: str, repo: str) -> dict[str, Any]:
                 return {"error": f"HTTP error: {e.response.status_code}"}
         except Exception as e:
             logger.error(f"Error fetching repo {owner}/{repo}: {e}")
+            return {"error": str(e)}
+
+
+async def get_user_events(username: str, limit: int = 30) -> dict[str, Any]:
+    """
+    Get list of events for a GitHub user.
+
+    Args:
+        username: GitHub username
+        limit: Maximum number of events to return (default: 30, max: 100)
+
+    Returns:
+        User events information
+    """
+    logger.debug(f"get_user_events() called with username={username}, limit={limit}")
+
+    url = f"{GITHUB_API_BASE}/users/{username}/events"
+    params = {
+        "per_page": min(limit, 100),
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url, headers=get_headers(), params=params, timeout=10.0
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            events = []
+            for event_data in data[:limit]:
+                actor_info = ActorInfo(
+                    login=event_data["actor"]["login"],
+                    id=event_data["actor"]["id"],
+                )
+
+                repo_ref = RepoReference(
+                    id=event_data["repo"]["id"],
+                    name=event_data["repo"]["name"],
+                    url=event_data["repo"]["url"],
+                )
+
+                event_info = EventInfo(
+                    id=event_data["id"],
+                    type=event_data["type"],
+                    actor=actor_info,
+                    repo=repo_ref,
+                    payload=event_data.get("payload", {}),
+                    public=event_data["public"],
+                    created_at=event_data["created_at"],
+                )
+                events.append(event_info)
+
+            result = UserEventsResponse(
+                username=username,
+                total_count=len(events),
+                events=events,
+            )
+
+            logger.info(
+                f"Successfully fetched {len(events)} events for user: {username}"
+            )
+            return result.to_dict()
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error fetching events for {username}: {e.response.status_code}"
+            )
+            if e.response.status_code == 404:
+                return {"error": f"User '{username}' not found"}
+            elif e.response.status_code == 403:
+                return {"error": "Rate limit exceeded or access forbidden"}
+            else:
+                return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error fetching events for {username}: {e}")
+            return {"error": str(e)}
+
+
+async def get_repo_events(owner: str, repo: str, limit: int = 30) -> dict[str, Any]:
+    """
+    Get list of events for a GitHub repository.
+
+    Args:
+        owner: Repository owner (username or organization)
+        repo: Repository name
+        limit: Maximum number of events to return (default: 30, max: 100)
+
+    Returns:
+        Repository events information
+    """
+    logger.debug(
+        f"get_repo_events() called with owner={owner}, repo={repo}, limit={limit}"
+    )
+
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/events"
+    params = {
+        "per_page": min(limit, 100),
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                url, headers=get_headers(), params=params, timeout=10.0
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            events = []
+            for event_data in data[:limit]:
+                actor_info = ActorInfo(
+                    login=event_data["actor"]["login"],
+                    id=event_data["actor"]["id"],
+                )
+
+                repo_ref = RepoReference(
+                    id=event_data["repo"]["id"],
+                    name=event_data["repo"]["name"],
+                    url=event_data["repo"]["url"],
+                )
+
+                event_info = EventInfo(
+                    id=event_data["id"],
+                    type=event_data["type"],
+                    actor=actor_info,
+                    repo=repo_ref,
+                    payload=event_data.get("payload", {}),
+                    public=event_data["public"],
+                    created_at=event_data["created_at"],
+                )
+                events.append(event_info)
+
+            result = RepoEventsResponse(
+                owner=owner,
+                repo=repo,
+                total_count=len(events),
+                events=events,
+            )
+
+            logger.info(
+                f"Successfully fetched {len(events)} events for repo: {owner}/{repo}"
+            )
+            return result.to_dict()
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error fetching events for {owner}/{repo}: {e.response.status_code}"
+            )
+            if e.response.status_code == 404:
+                return {"error": f"Repository '{owner}/{repo}' not found"}
+            elif e.response.status_code == 403:
+                return {"error": "Rate limit exceeded or access forbidden"}
+            else:
+                return {"error": f"HTTP error: {e.response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error fetching events for {owner}/{repo}: {e}")
             return {"error": str(e)}

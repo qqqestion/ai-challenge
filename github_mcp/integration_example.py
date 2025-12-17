@@ -87,6 +87,33 @@ class SimpleAIWithTools:
 
             return {"tool": "get_repo_info", "args": {"owner": owner, "repo": repo}}
 
+        elif "events" in message_lower or "события" in message_lower:
+            words = user_message.split()
+
+            # Check if it's a user events or repo events
+            if "user" in message_lower or "пользователя" in message_lower:
+                username = "octocat"
+                for i, word in enumerate(words):
+                    if word.lower() in ["user", "пользователя"]:
+                        if i + 1 < len(words):
+                            username = words[i + 1].strip("'\"")
+                            break
+
+                return {"tool": "get_user_events", "args": {"username": username, "limit": 5}}
+
+            elif "repo" in message_lower or "репозитория" in message_lower:
+                owner = "octocat"
+                repo = "Hello-World"
+                for i, word in enumerate(words):
+                    if "/" in word:
+                        parts = word.split("/")
+                        if len(parts) == 2:
+                            owner = parts[0].strip("'\"")
+                            repo = parts[1].strip("'\"")
+                            break
+
+                return {"tool": "get_repo_events", "args": {"owner": owner, "repo": repo, "limit": 5}}
+
         return None
 
     def _format_tool_result(self, tool_name: str, result_json: str) -> str:
@@ -133,6 +160,26 @@ class SimpleAIWithTools:
                 f"   Ссылка: {data['html_url']}"
             )
 
+        elif tool_name == "get_user_events":
+            events = data["events"]
+            result = f"📅 События пользователя {data['username']}:\n"
+            for event in events:
+                event_type = event['type']
+                repo_name = event['repo']['name']
+                created_at = event['created_at']
+                result += f"   • {event_type} в {repo_name} ({created_at})\n"
+            return result
+
+        elif tool_name == "get_repo_events":
+            events = data["events"]
+            result = f"📅 События репозитория {data['owner']}/{data['repo']}:\n"
+            for event in events:
+                event_type = event['type']
+                actor = event['actor']['login']
+                created_at = event['created_at']
+                result += f"   • {event_type} от {actor} ({created_at})\n"
+            return result
+
         # Fallback: return raw JSON
         return json.dumps(data, indent=2, ensure_ascii=False)
 
@@ -155,7 +202,9 @@ class SimpleAIWithTools:
                 "Я могу помочь вам с GitHub! Попробуйте:\n"
                 "- 'Покажи информацию о пользователе octocat'\n"
                 "- 'Покажи репозитории пользователя octocat'\n"
-                "- 'Покажи информацию о репозитории octocat/Hello-World'"
+                "- 'Покажи информацию о репозитории octocat/Hello-World'\n"
+                "- 'Покажи события пользователя octocat'\n"
+                "- 'Покажи события репозитория octocat/Hello-World'"
             )
 
         # Call MCP tool
@@ -220,6 +269,8 @@ async def main():
             "Покажи информацию о пользователе octocat",
             "Покажи репозитории пользователя octocat",
             "Покажи информацию о репозитории octocat/Hello-World",
+            "Покажи события пользователя octocat",
+            "Покажи события репозитория octocat/Hello-World",
         ]
 
         for query in demo_queries:

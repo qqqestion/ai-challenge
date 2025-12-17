@@ -2,12 +2,14 @@
 
 import asyncio
 import signal
+from datetime import time
 
 from .config import get_settings, setup_logger, get_logger
 from .llm import YandexLLMClient, ResponseProcessor
 from .bot import RickBot, StateManager
 from .bot.llm_integration import LLMIntegration
 from .bot.mcp_manager import MCPManager
+from .bot.daily_summary_manager import DailySummaryManager
 from .utils.database import DatabaseManager
 
 # Global references for cleanup
@@ -114,14 +116,31 @@ async def initialize_application():
     )
     logger.info("✓ Bot initialized")
 
+    # Initialize DailySummaryManager (only if MCP is enabled)
+    daily_summary_manager = None
+    if mcp_manager and mcp_manager.is_initialized:
+        logger.info("Initializing DailySummaryManager...")
+        daily_summary_manager = DailySummaryManager(
+            mcp_manager=mcp_manager,
+            llm_integration=llm_integration,
+            db_manager=db_manager,
+            bot=bot.application.bot
+        )
+        
+        # Add to bot_data for access from handlers
+        bot.application.bot_data["daily_summary_manager"] = daily_summary_manager
+        logger.info("✓ DailySummaryManager initialized")
+    else:
+        logger.warning("⚠ DailySummaryManager not initialized (MCP not available)")
+
     logger.info("=" * 60)
     logger.info("Initialization complete!")
     logger.info("=" * 60)
 
-    return bot, llm_client, db_manager, mcp_manager
+    return bot, llm_client, db_manager, mcp_manager, daily_summary_manager
 
 
-async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_manager: DatabaseManager, mcp_manager: MCPManager = None):
+async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_manager: DatabaseManager, mcp_manager: MCPManager = None, daily_summary_manager: DailySummaryManager = None):
     """Cleanup application resources.
 
     Args:
@@ -129,6 +148,7 @@ async def cleanup_application(bot: RickBot, llm_client: YandexLLMClient, db_mana
         llm_client: LLM client instance
         db_manager: Database manager instance
         mcp_manager: MCP manager instance (optional)
+        daily_summary_manager: Daily summary manager instance (optional)
     """
     logger = get_logger()
     logger.info("=" * 60)
@@ -176,11 +196,32 @@ async def main():
 
     try:
         # Initialize
-        bot, llm_client, db_manager, mcp_manager = await initialize_application()
+        bot, llm_client, db_manager, mcp_manager, daily_summary_manager = await initialize_application()
         _bot_instance = bot
         _llm_client = llm_client
         _db_manager = db_manager
         _mcp_manager = mcp_manager
+
+        # Setup JobQueue for daily summaries
+        if daily_summary_manager:
+            logger.info("=" * 60)
+            logger.info("Setting up JobQueue for daily summaries")
+            logger.info("=" * 60)
+            
+            job_queue = bot.application.job_queue
+            
+            # Schedule daily summary at 06:00 UTC (09:00 MSK)
+            job_queue.run_daily(
+                daily_summary_manager.send_all_daily_summaries,
+                time=time(hour=6, minute=0, second=0),
+                days=(0, 1, 2, 3, 4, 5, 6),  # Every day
+                name='daily_github_summary'
+            )
+            
+            logger.info("✓ Daily summary job scheduled for 06:00 UTC (09:00 MSK)")
+            logger.info("=" * 60)
+        else:
+            logger.info("Daily summary job not scheduled (manager not initialized)")
 
         # Start bot
         await bot.start()
@@ -230,7 +271,8 @@ async def main():
     finally:
         # Cleanup
         if _bot_instance and _llm_client and _db_manager:
-            await cleanup_application(_bot_instance, _llm_client, _db_manager, _mcp_manager)
+            daily_summary_mgr = _bot_instance.application.bot_data.get("daily_summary_manager") if _bot_instance else None
+            await cleanup_application(_bot_instance, _llm_client, _db_manager, _mcp_manager, daily_summary_mgr)
 
 
 def run():

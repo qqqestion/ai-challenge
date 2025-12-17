@@ -32,19 +32,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🔧 У меня есть доступ к GitHub инструментам - используй /tools чтобы посмотреть
 
+📊 Могу отправлять ежедневные саммари твоей GitHub активности - /daily_summary_on
+
 🌡️ Можешь настроить температуру моих ответов через /temperature
 
-Команды:
-/start - это сообщение
-/help - справка
+Основные команды:
+/help - подробная справка
 /commands - список всех команд
 /tools - показать GitHub инструменты
-/temperature - настройка температуры ответов
-/change_model - выбрать модель
-/reset - очистить историю
-/stats - показать статистику использования
-/summarization_on - включить суммаризацию чата
-/summarization_off - выключить суммаризацию чата
+/set_github_username - установить GitHub username
+/daily_summary_on - включить ежедневное саммари
 
 Wubba Lubba Dub Dub! 🧪"""
 
@@ -69,6 +66,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔧 **GitHub инструменты:**
 /tools - показать все доступные GitHub инструменты
 Я могу искать репозитории, смотреть issues, получать информацию о пользователях и многое другое!
+
+📊 **Ежедневное саммари GitHub:**
+/set_github_username <username> - установить свой GitHub username
+/daily_summary_on - включить ежедневное саммари (09:00 МСК)
+/daily_summary_off - выключить саммари
+/test_daily_summary - протестировать саммари прямо сейчас
+
+Каждое утро я буду присылать краткое саммари твоей активности за предыдущий день!
 
 🌡️ **Настройка температуры:**
 /temperature - показать текущую температуру
@@ -354,6 +359,12 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🔧 **GitHub инструменты:**
 /tools - показать все доступные GitHub инструменты
 
+📊 **Ежедневное саммари GitHub:**
+/set_github_username <username> - установить GitHub username
+/daily_summary_on - включить ежедневное саммари (09:00 МСК)
+/daily_summary_off - выключить ежедневное саммари
+/test_daily_summary - протестировать саммари вручную
+
 🌡️ **Настройки:**
 /temperature - показать текущую температуру
 /temperature <0.0-2.0> - установить температуру ответов
@@ -552,6 +563,172 @@ MCP сервер не инициализирован или отключен.
 
     tools_text = "\n".join(tools_lines)
     await update.message.reply_text(tools_text)
+
+
+async def set_github_username_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /set_github_username command - set GitHub username for user.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+    db_manager = state_manager.db_manager
+
+    # Check if username is provided
+    if not context.args:
+        # Show current username
+        current_username = await db_manager.get_github_username(user_id)
+        if current_username:
+            message = f"""🐙 **Текущий GitHub username:** `{current_username}`
+
+Чтобы изменить, используй:
+`/set_github_username <новый_username>`"""
+        else:
+            message = """🐙 **GitHub username не установлен**
+
+Установи свой GitHub username для получения ежедневных саммари:
+`/set_github_username <твой_username>`
+
+Например: `/set_github_username octocat`"""
+
+        await update.message.reply_text(message)
+        return
+
+    # Set new username
+    username = context.args[0].strip()
+
+    # Remove @ if present
+    if username.startswith("@"):
+        username = username[1:]
+
+    try:
+        await db_manager.set_github_username(user_id, username)
+        logger.info(f"User {user_id} set GitHub username: {username}")
+
+        message = f"""✅ **GitHub username установлен:** `{username}`
+
+*urp* Теперь можешь включить ежедневное саммари:
+`/daily_summary_on`
+
+Или протестируй саммари прямо сейчас:
+`/test_daily_summary`"""
+
+        await update.message.reply_text(message)
+
+    except Exception as e:
+        logger.error(f"Error setting GitHub username for user {user_id}: {e}")
+        await update.message.reply_text(
+            "*burp* Что-то пошло не так при установке username. Попробуй ещё раз."
+        )
+
+
+async def daily_summary_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /daily_summary_on command - enable daily GitHub summary.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+    db_manager = state_manager.db_manager
+
+    # Check if GitHub username is set
+    github_username = await db_manager.get_github_username(user_id)
+    if not github_username:
+        message = """⚠️ **GitHub username не установлен!**
+
+*urp* Сначала нужно указать свой GitHub username:
+`/set_github_username <твой_username>`
+
+Например: `/set_github_username octocat`"""
+        await update.message.reply_text(message)
+        return
+
+    # Enable daily summary
+    await db_manager.set_daily_summary_enabled(user_id, True)
+    logger.info(f"User {user_id} enabled daily GitHub summary")
+
+    message = f"""✅ **Ежедневное саммари GitHub включено!**
+
+*burp* Теперь каждый день в **09:00 МСК** я буду отправлять тебе краткое саммари 
+твоей активности в GitHub (@{github_username}) за предыдущий день.
+
+📊 Включает:
+• Количество коммитов
+• Pull requests
+• Issues
+• Комментарии
+• Другую активность
+
+Можешь протестировать саммари прямо сейчас:
+`/test_daily_summary`
+
+Чтобы выключить: `/daily_summary_off`"""
+
+    await update.message.reply_text(message)
+
+
+async def daily_summary_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /daily_summary_off command - disable daily GitHub summary.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+    db_manager = state_manager.db_manager
+
+    # Disable daily summary
+    await db_manager.set_daily_summary_enabled(user_id, False)
+    logger.info(f"User {user_id} disabled daily GitHub summary")
+
+    message = """🚫 **Ежедневное саммари GitHub выключено**
+
+*urp* Больше не буду отправлять тебе ежедневные саммари.
+
+Чтобы снова включить: `/daily_summary_on`"""
+
+    await update.message.reply_text(message)
+
+
+async def test_daily_summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /test_daily_summary command - test daily summary generation.
+
+    Args:
+        update: Telegram update object
+        context: Bot context
+    """
+    user_id = update.effective_user.id
+    logger.info(f"User {user_id} requested test daily summary")
+
+    # Get daily summary manager from bot_data
+    daily_summary_manager = context.bot_data.get("daily_summary_manager")
+
+    if not daily_summary_manager:
+        await update.message.reply_text(
+            "*burp* Саммари менеджер не инициализирован. Попробуй перезапустить бота."
+        )
+        return
+
+    # Show typing indicator
+    await update.message.chat.send_action(ChatAction.TYPING)
+
+    # Send test summary
+    await update.message.reply_text(
+        "🧪 *urp* Генерирую тестовое саммари... Подожди пару секунд..."
+    )
+
+    success = await daily_summary_manager.send_daily_summary_to_user(user_id)
+
+    if not success:
+        # Error message already sent by send_daily_summary_to_user
+        logger.warning(f"Failed to send test summary to user {user_id}")
+    else:
+        logger.info(f"Successfully sent test summary to user {user_id}")
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

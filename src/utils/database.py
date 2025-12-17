@@ -18,6 +18,10 @@ class UserSettings:
     model: str = 'gpt-4o-mini'
     temperature: float = 0.3
     summarization_enabled: bool = True
+    github_username: Optional[str] = None
+    daily_summary_enabled: bool = False
+    daily_summary_time: str = '06:00:00'
+    timezone: str = 'Europe/Moscow'
 
 
 @dataclass
@@ -187,7 +191,9 @@ class DatabaseManager:
             UserSettings object
         """
         cursor = self._execute_query(
-            "SELECT model, temperature, summarization_enabled FROM user_settings WHERE user_id = ?",
+            """SELECT model, temperature, summarization_enabled, 
+                      github_username, daily_summary_enabled, daily_summary_time, timezone 
+               FROM user_settings WHERE user_id = ?""",
             (user_id,)
         )
         row = cursor.fetchone()
@@ -197,7 +203,11 @@ class DatabaseManager:
                 user_id=user_id,
                 model=row['model'],
                 temperature=row['temperature'],
-                summarization_enabled=bool(row['summarization_enabled'])
+                summarization_enabled=bool(row['summarization_enabled']),
+                github_username=row['github_username'],
+                daily_summary_enabled=bool(row['daily_summary_enabled']),
+                daily_summary_time=row['daily_summary_time'],
+                timezone=row['timezone']
             )
 
         # Create default settings
@@ -212,9 +222,11 @@ class DatabaseManager:
         """
         self._execute_query(
             """INSERT OR REPLACE INTO user_settings
-               (user_id, model, temperature, summarization_enabled)
-               VALUES (?, ?, ?, ?)""",
-            (settings.user_id, settings.model, settings.temperature, settings.summarization_enabled)
+               (user_id, model, temperature, summarization_enabled,
+                github_username, daily_summary_enabled, daily_summary_time, timezone)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (settings.user_id, settings.model, settings.temperature, settings.summarization_enabled,
+             settings.github_username, settings.daily_summary_enabled, settings.daily_summary_time, settings.timezone)
         )
         self._connection.commit()
         logger.debug(f"Saved settings for user {settings.user_id}")
@@ -423,3 +435,64 @@ class DatabaseManager:
         )
         row = cursor.fetchone()
         return row['count'] if row else 0
+
+    # Daily summary methods
+
+    async def set_github_username(self, user_id: int, username: str):
+        """Set GitHub username for user.
+
+        Args:
+            user_id: Telegram user ID
+            username: GitHub username
+        """
+        # Ensure user exists in database
+        await self.get_or_create_user(user_id)
+        
+        settings = await self.get_user_settings(user_id)
+        settings.github_username = username
+        await self.save_user_settings(settings)
+        logger.info(f"Set GitHub username for user {user_id}: {username}")
+
+    async def get_github_username(self, user_id: int) -> Optional[str]:
+        """Get GitHub username for user.
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            GitHub username or None
+        """
+        settings = await self.get_user_settings(user_id)
+        return settings.github_username
+
+    async def set_daily_summary_enabled(self, user_id: int, enabled: bool):
+        """Enable or disable daily summary for user.
+
+        Args:
+            user_id: Telegram user ID
+            enabled: True to enable, False to disable
+        """
+        # Ensure user exists in database
+        await self.get_or_create_user(user_id)
+        
+        settings = await self.get_user_settings(user_id)
+        settings.daily_summary_enabled = enabled
+        await self.save_user_settings(settings)
+        logger.info(f"Set daily summary for user {user_id}: {enabled}")
+
+    async def get_users_for_daily_summary(self) -> List[int]:
+        """Get list of user IDs who have daily summary enabled.
+
+        Returns:
+            List of user IDs with daily summary enabled and GitHub username set
+        """
+        cursor = self._execute_query(
+            """SELECT user_id FROM user_settings 
+               WHERE daily_summary_enabled = 1 
+               AND github_username IS NOT NULL 
+               AND github_username != ''"""
+        )
+        rows = cursor.fetchall()
+        user_ids = [row['user_id'] for row in rows]
+        logger.debug(f"Found {len(user_ids)} users for daily summary")
+        return user_ids
