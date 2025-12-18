@@ -497,29 +497,21 @@ async def tools_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"User {user_id} requested tools list")
 
     llm_integration = context.bot_data["llm_integration"]
-    mcp_manager = llm_integration.mcp_manager
+    tools = llm_integration.get_all_tools()
 
-    if not mcp_manager or not mcp_manager.is_initialized:
-        message = """*urp* Извини, но инструменты GitHub сейчас недоступны.
-MCP сервер не инициализирован или отключен.
+    if not tools:
+        message = """*urp* Извини, но инструменты сейчас недоступны.
+MCP сервер(а) не инициализирован(ы) или инструментов нет.
 
 *burp* Попробуй перезапустить бота или проверь настройки."""
         await update.message.reply_text(message)
         return
 
-    tools = mcp_manager.tools
-
-    if not tools:
-        message = """*urp* Хм, странно... MCP сервер работает, но инструментов нет.
-Может быть, они еще не загрузились. Попробуй позже."""
-        await update.message.reply_text(message)
-        return
-
     # Build tools list message
     tools_lines = [
-        "🔧 **Доступные GitHub инструменты:**",
+        "🔧 **Доступные инструменты MCP:**",
         "",
-        "*urp* Вот что я могу сделать с GitHub API:",
+        "*urp* Вот что я могу сделать:",
         "",
     ]
 

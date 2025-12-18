@@ -1,7 +1,7 @@
 """Integration layer between Telegram bot and LLM API."""
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..llm import (
     YandexLLMClient,
@@ -31,7 +31,7 @@ class LLMIntegration:
         llm_client: YandexLLMClient,
         state_manager: StateManager,
         response_processor: ResponseProcessor,
-        mcp_manager: Optional[MCPManager] = None
+        mcp_managers: Optional[List[MCPManager]] = None,
     ):
         """Initialize LLM integration.
 
@@ -39,13 +39,16 @@ class LLMIntegration:
             llm_client: Yandex LLM API client
             state_manager: User state manager
             response_processor: Response processor
-            mcp_manager: MCP manager for tool integration (optional)
+            mcp_managers: List of MCP managers for tool integration (optional)
         """
         self.llm_client = llm_client
         self.state_manager = state_manager
         self.response_processor = response_processor
-        self.mcp_manager = mcp_manager
-        logger.info(f"LLMIntegration initialized (MCP: {'enabled' if mcp_manager else 'disabled'})")
+        self.mcp_managers = mcp_managers or []
+        logger.info(
+            "LLMIntegration initialized (MCP count: %s)",
+            len(self.mcp_managers),
+        )
     
     async def process_message(self, user_id: int, message: str) -> str:
         """Process user message and generate response.
@@ -79,18 +82,29 @@ class LLMIntegration:
             conversation_history=user_state.conversation_history
         )
 
-        # Get tools for API if MCP is available
-        tools = None
-        logger.info(f"MCP manager status: available={self.mcp_manager is not None}, "
-                   f"initialized={self.mcp_manager.is_initialized if self.mcp_manager else False}")
-        
-        if self.mcp_manager and self.mcp_manager.is_initialized:
-            tools = self.mcp_manager.get_tools_for_api()
-            logger.info(f"Got {len(tools) if tools else 0} tools from MCP manager")
-            if tools:
-                logger.debug(f"Using {len(tools)} MCP tools in API request")
+        initialized_managers = self._get_initialized_managers()
+
+        tools: Optional[List[Dict[str, Any]]] = None
+        tool_name_to_manager: Dict[str, MCPManager] = {}
+
+        if initialized_managers:
+            tools = []
+            for manager in initialized_managers:
+                manager_tools = manager.get_tools_for_api()
+                for tool in manager_tools:
+                    tool_name = tool.get("function", {}).get("name")
+                    if not tool_name or tool_name in tool_name_to_manager:
+                        continue
+                    tool_name_to_manager[tool_name] = manager
+                    tools.append(tool)
+
+            logger.info(
+                "Aggregated %s tool(s) from %s MCP manager(s)",
+                len(tools),
+                len(initialized_managers),
+            )
         else:
-            logger.warning("MCP manager not available or not initialized - no tools will be used")
+            logger.warning("No initialized MCP managers - tools are disabled")
 
         # Send to LLM API with user-specific temperature
         try:
@@ -130,12 +144,20 @@ class LLMIntegration:
                         await user_state.add_usage_stats(input_tokens, output_tokens, cost)
 
                 # Check if LLM wants to call tools
-                logger.debug(f"Checking for tool calls: mcp_manager={self.mcp_manager is not None}, "
-                           f"initialized={self.mcp_manager.is_initialized if self.mcp_manager else False}, "
-                           f"tools_provided={tools is not None and len(tools) > 0 if tools else False}")
-                
-                if self.mcp_manager and self.mcp_manager.is_initialized and tools:
-                    tool_calls = self.mcp_manager.extract_tool_calls_from_response(response)
+                logger.debug(
+                    "Checking for tool calls: managers=%s, tools_provided=%s",
+                    len(initialized_managers),
+                    bool(tools),
+                )
+
+                tool_calls: List[Dict[str, Any]] = []
+                if initialized_managers and tools:
+                    parser_manager = initialized_managers[0]
+                    tool_calls = parser_manager.extract_tool_calls_from_response(response)
+                    # Keep only tool calls that we can route
+                    tool_calls = [
+                        tc for tc in tool_calls if tc.get("name") in tool_name_to_manager
+                    ]
                     logger.debug(f"Extracted {len(tool_calls)} tool call(s) from response")
 
                     if tool_calls:
@@ -171,10 +193,15 @@ class LLMIntegration:
                             tool_arguments = tool_call["arguments"]
                             tool_call_id = tool_call.get("id")
 
+                            manager = tool_name_to_manager.get(tool_name)
+                            if not manager:
+                                logger.warning("No MCP manager found for tool %s", tool_name)
+                                continue
+
                             logger.info(f"Executing tool: {tool_name}")
 
                             # Execute tool
-                            tool_result = await self.mcp_manager.call_tool(
+                            tool_result = await manager.call_tool(
                                 tool_name,
                                 tool_arguments
                             )
@@ -207,10 +234,8 @@ class LLMIntegration:
                     else:
                         logger.debug("No tool_calls found in response")
                 else:
-                    if not self.mcp_manager:
-                        logger.debug("MCP manager is not available")
-                    elif not self.mcp_manager.is_initialized:
-                        logger.debug("MCP manager is not initialized")
+                    if not initialized_managers:
+                        logger.debug("No initialized MCP managers available")
                     elif not tools:
                         logger.debug("No tools provided to LLM")
 
@@ -262,9 +287,22 @@ class LLMIntegration:
     async def cleanup(self):
         """Cleanup resources."""
         await self.llm_client.close()
-        if self.mcp_manager:
-            await self.mcp_manager.cleanup()
+        for manager in self.mcp_managers:
+            await manager.cleanup()
         logger.info("LLMIntegration cleanup completed")
+
+    def get_all_tools(self) -> List[Dict[str, Any]]:
+        """Return aggregated tools from all initialized MCP managers."""
+        result: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for manager in self._get_initialized_managers():
+            for tool in manager.tools:
+                name = tool.get("name")
+                if not name or name in seen:
+                    continue
+                seen.add(name)
+                result.append(tool)
+        return result
 
     def _format_metadata(
         self,
@@ -438,6 +476,10 @@ Conversation:
 Summary:"""
 
         return prompt
+
+    def _get_initialized_managers(self) -> List[MCPManager]:
+        """Return only initialized MCP managers."""
+        return [m for m in self.mcp_managers if m and m.is_initialized]
 
     @staticmethod
     def _select_parser(model: ModelName) -> Any:
