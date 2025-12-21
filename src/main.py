@@ -75,6 +75,7 @@ async def initialize_application():
     mcp_managers: list[MCPManager] = []
     github_mcp_manager: MCPManager | None = None
     report_mcp_manager: MCPManager | None = None
+    android_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
         try:
@@ -101,11 +102,13 @@ async def initialize_application():
         base_dir = Path(__file__).resolve().parent.parent
         github_path = base_dir / "github_mcp" / "server.py"
         report_path = base_dir / "report_mcp" / "server.py"
+        android_path = base_dir / "android_mcp" / "server.py"
 
         github_mcp_manager = await _init_manager(github_path, "github_mcp")
         report_mcp_manager = await _init_manager(report_path, "report_mcp")
+        android_mcp_manager = await _init_manager(android_path, "android_mcp")
 
-        for manager in (github_mcp_manager, report_mcp_manager):
+        for manager in (github_mcp_manager, report_mcp_manager, android_mcp_manager):
             if manager:
                 mcp_managers.append(manager)
     else:
