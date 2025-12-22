@@ -1,3 +1,4 @@
+
 # GitHub MCP Сервер
 
 Это MCP (Model Context Protocol) сервер для интеграции с GitHub через официальный REST API. Сервер предоставляет набор инструментов для получения информации о пользователях и репозиториях GitHub.
@@ -15,6 +16,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
 - `username` (string, обязательный) — имя пользователя GitHub
 
 **Пример ответа:**
+
 ```json
 {
   "login": "octocat",
@@ -28,6 +30,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
   "avatar_url": "https://avatars.githubusercontent.com/u/583231?v=4",
   "created_at": "2011-01-25T18:44:36Z"
 }
+
 ```
 
 ### 2. `get_user_repos`
@@ -38,6 +41,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
 - `limit` (number, опционально) — максимальное количество репозиториев (по умолчанию: 10, максимум: 100)
 
 **Пример ответа:**
+
 ```json
 {
   "username": "octocat",
@@ -58,6 +62,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
     }
   ]
 }
+
 ```
 
 ### 3. `get_repo_info`
@@ -68,6 +73,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
 - `repo` (string, обязательный) — название репозитория
 
 **Пример ответа:**
+
 ```json
 {
   "name": "Hello-World",
@@ -82,6 +88,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
   "updated_at": "2024-12-16T10:00:00Z",
   "default_branch": "main"
 }
+
 ```
 
 ## Установка
@@ -106,6 +113,7 @@ Model Context Protocol (MCP) — это открытый протокол, по�
 
 ```bash
 GITHUB_PERSONAL_TOKEN=ghp_your_token_here
+
 ```
 
 **Важно:** Никогда не коммитьте `.env` файл в Git!
@@ -115,6 +123,7 @@ GITHUB_PERSONAL_TOKEN=ghp_your_token_here
 ```bash
 cd github_mcp
 pip install -r requirements.txt
+
 ```
 
 Или установите в виртуальное окружение:
@@ -124,6 +133,7 @@ cd github_mcp
 python -m venv venv
 source venv/bin/activate  # На Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
 ```
 
 ## Запуск сервера
@@ -133,6 +143,7 @@ pip install -r requirements.txt
 ```bash
 cd github_mcp
 python server.py
+
 ```
 
 Сервер будет ожидать входящие MCP-запросы через stdio.
@@ -163,13 +174,15 @@ python server.py
     }
   }
 }
+
 ```
 
-**Важно:** 
+**Важно:**
 - Замените `/полный/путь/к/ai-challenge` на реальный путь к вашему проекту
 - Замените `ghp_your_token_here` на ваш GitHub токен
 
 **Пример для macOS:**
+
 ```json
 {
   "mcpServers": {
@@ -184,6 +197,7 @@ python server.py
     }
   }
 }
+
 ```
 
 3. **Перезапустите Claude Desktop**
@@ -211,6 +225,7 @@ python server.py
     }
   }
 }
+
 ```
 
 ### Подключение к другим MCP-клиентам
@@ -237,6 +252,7 @@ MCP протокол универсален и может быть исполь�
 ```bash
 cd github_mcp
 python example_client.py
+
 ```
 
 Этот скрипт демонстрирует:
@@ -252,6 +268,7 @@ python example_client.py
 ```bash
 cd github_mcp
 python integration_example.py
+
 ```
 
 Этот скрипт показывает:
@@ -269,36 +286,39 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def connect_and_use_mcp():
+
     # Параметры сервера
     server_params = StdioServerParameters(
         command="python",
         args=["github_mcp/server.py"],
         env={"GITHUB_PERSONAL_TOKEN": os.getenv("GITHUB_PERSONAL_TOKEN")}
     )
-    
+
     # Подключение
     stdio_transport = await stdio_client(server_params)
     stdio, write = stdio_transport
-    
+
     session = ClientSession(stdio, write)
     await session.initialize()
-    
+
     try:
+
         # Получение списка инструментов
         tools = await session.list_tools()
         print(f"Доступно инструментов: {len(tools.tools)}")
-        
+
         # Вызов инструмента
         result = await session.call_tool(
             "get_user",
             {"username": "octocat"}
         )
         print(result.content[0].text)
-        
+
     finally:
         await session.__aexit__(None, None, None)
 
 asyncio.run(connect_and_use_mcp())
+
 ```
 
 ### Интеграция с AI моделями
@@ -323,6 +343,7 @@ response = await llm.send_prompt(
     ],
     temperature=0.7
 )
+
 ```
 
 Подробнее см. в [основном README.md](../README.md#-программная-интеграция-mcp).
@@ -348,6 +369,7 @@ response = await llm.send_prompt(
 
 ```python
 logging.basicConfig(level=logging.DEBUG)
+
 ```
 
 ### Проверка соединения
@@ -370,6 +392,7 @@ curl -H "Authorization: Bearer ghp_your_token" \
      -H "Accept: application/vnd.github+json" \
      -H "X-GitHub-Api-Version: 2022-11-28" \
      https://api.github.com/users/octocat
+
 ```
 
 ### Обработка ошибок
@@ -389,9 +412,11 @@ GitHub API имеет ограничения на количество запр�
 - **Без токена:** 60 запросов в час
 
 Текущий лимит можно проверить через API:
+
 ```bash
 curl -H "Authorization: Bearer ghp_your_token" \
      https://api.github.com/rate_limit
+
 ```
 
 ## Структура проекта
@@ -405,6 +430,7 @@ github_mcp/
 ├── example_client.py    # Пример клиента
 ├── integration_example.py # Пример интеграции с AI
 └── README.md           # Документация (этот файл)
+
 ```
 
 ## Требования
@@ -457,3 +483,4 @@ github_mcp/
 ---
 
 **Документация GitHub REST API:** https://docs.github.com/en/rest
+
