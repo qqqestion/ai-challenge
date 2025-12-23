@@ -9,7 +9,7 @@ over the prebuilt FAISS index stored in this directory.
 import asyncio
 import json
 import logging
-import sys
+import re
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ META_PATH = CURRENT_DIR / "articles.faiss.meta.json"
 
 DEFAULT_EMBED_URL = "http://localhost:11434/api/embeddings"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
-DEFAULT_TOP_K = 5
+DEFAULT_TOP_K = 10
 
 app = Server("rag-mcp-server")
 
@@ -74,8 +74,16 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
     return vectors / norms
 
 
+def _tokenize(text: str) -> set[str]:
+    text = text.replace("/", " ").replace("_", " ").replace("-", " ")
+    # Разбиваем CamelCase: AmneziaVPN -> Amnezia VPN
+    text = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", text)
+    tokens = {tok for tok in re.findall(r"\w+", text.lower()) if tok}
+    return tokens
+
+
 def _embed_query(query: str) -> np.ndarray:
-    payload = {"model": DEFAULT_EMBED_MODEL, "input": query}
+    payload = {"model": DEFAULT_EMBED_MODEL, "prompt": query}
     response = requests.post(DEFAULT_EMBED_URL, json=payload, timeout=60)
     response.raise_for_status()
     data = response.json()
@@ -123,23 +131,37 @@ async def list_tools() -> list[Tool]:
 
 def _search_articles(query: str, top_k: int) -> list[dict]:
     top_k = max(1, min(top_k, INDEX.ntotal))
+    # Берём больше кандидатов для векторного поиска, затем подрезаем после rerank.
+    search_k = min(INDEX.ntotal, max(top_k * 6, top_k + 10))
 
     query_vec = _embed_query(query)
-    scores, idxs = INDEX.search(query_vec, top_k)
+    vec_scores, idxs = INDEX.search(query_vec, search_k)
 
+    query_tokens = _tokenize(query)
     results: list[dict] = []
-    for score, idx in zip(scores[0], idxs[0]):
+
+    for score, idx in zip(vec_scores[0], idxs[0]):
         meta = METADATA[idx]
+        text = meta.get("text") or ""
+        doc_tokens = _tokenize(text)
+        token_overlap = len(query_tokens & doc_tokens)
+        # Простая rerank-эвристика: добавляем бонус за пересечение токенов.
+        rerank_score = float(score) + 0.3 * token_overlap
+
         results.append(
             {
                 "score": float(score),
+                "rerank_score": rerank_score,
+                "token_overlap": token_overlap,
                 "source_path": meta.get("source_path"),
                 "chunk_idx": meta.get("chunk_idx"),
                 "file_chunk_idx": meta.get("file_chunk_idx"),
-                "text": meta.get("text"),
+                "text": text,
             }
         )
-    return results
+
+    results.sort(key=lambda x: x["rerank_score"], reverse=True)
+    return results[:top_k]
 
 
 @app.call_tool()

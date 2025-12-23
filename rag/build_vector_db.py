@@ -114,13 +114,15 @@ def embed_text(
     url: str,
     timeout: int = 60,
 ) -> List[float]:
-    payload = {"model": model, "input": text}
+    payload = {"model": model, "prompt": text}
     response = requests.post(url, json=payload, timeout=timeout)
     response.raise_for_status()
     data = response.json()
     embedding = data.get("embedding")
     if not isinstance(embedding, list):
         raise ValueError("Unexpected embeddings response format")
+    if len(embedding) == 0:
+        raise ValueError("Received empty embedding vector")
     return embedding
 
 

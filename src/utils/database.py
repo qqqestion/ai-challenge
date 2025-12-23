@@ -18,6 +18,7 @@ class UserSettings:
     model: str = 'gpt-4o-mini'
     temperature: float = 0.3
     summarization_enabled: bool = True
+    rag_enabled: bool = False
     github_username: Optional[str] = None
     daily_summary_enabled: bool = False
     daily_summary_time: str = '06:00:00'
@@ -78,6 +79,7 @@ class DatabaseManager:
             cursor = self._connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
             if cursor.fetchone():
                 logger.info("Database already initialized, skipping table creation")
+                await self._ensure_additional_columns()
             else:
                 # Create tables if they don't exist
                 await self._create_tables()
@@ -151,6 +153,22 @@ class DatabaseManager:
         self._connection.commit()
         logger.info("Database tables created/verified")
 
+    async def _ensure_additional_columns(self):
+        """Ensure new columns exist in existing tables (lightweight migration)."""
+        try:
+            # Add rag_enabled to user_settings if missing
+            columns = self._connection.execute("PRAGMA table_info(user_settings)").fetchall()
+            column_names = {col["name"] for col in columns}
+            if "rag_enabled" not in column_names:
+                logger.info("Adding missing column user_settings.rag_enabled")
+                self._connection.execute(
+                    "ALTER TABLE user_settings ADD COLUMN rag_enabled BOOLEAN NOT NULL DEFAULT 0"
+                )
+                self._connection.commit()
+        except Exception as e:
+            logger.error(f"Failed to ensure additional columns: {e}")
+            raise
+
     # User management methods
 
     async def get_or_create_user(self, user_id: int) -> int:
@@ -192,7 +210,7 @@ class DatabaseManager:
         """
         cursor = self._execute_query(
             """SELECT model, temperature, summarization_enabled, 
-                      github_username, daily_summary_enabled, daily_summary_time, timezone 
+                      rag_enabled, github_username, daily_summary_enabled, daily_summary_time, timezone 
                FROM user_settings WHERE user_id = ?""",
             (user_id,)
         )
@@ -204,6 +222,7 @@ class DatabaseManager:
                 model=row['model'],
                 temperature=row['temperature'],
                 summarization_enabled=bool(row['summarization_enabled']),
+                rag_enabled=bool(row['rag_enabled']),
                 github_username=row['github_username'],
                 daily_summary_enabled=bool(row['daily_summary_enabled']),
                 daily_summary_time=row['daily_summary_time'],
@@ -222,10 +241,10 @@ class DatabaseManager:
         """
         self._execute_query(
             """INSERT OR REPLACE INTO user_settings
-               (user_id, model, temperature, summarization_enabled,
+               (user_id, model, temperature, summarization_enabled, rag_enabled,
                 github_username, daily_summary_enabled, daily_summary_time, timezone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (settings.user_id, settings.model, settings.temperature, settings.summarization_enabled,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (settings.user_id, settings.model, settings.temperature, settings.summarization_enabled, settings.rag_enabled,
              settings.github_username, settings.daily_summary_enabled, settings.daily_summary_time, settings.timezone)
         )
         self._connection.commit()

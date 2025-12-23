@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
     model VARCHAR(50) NOT NULL DEFAULT 'gpt-4o-mini',
     temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature >= 0.0 AND temperature <= 2.0),
     summarization_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    rag_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     github_username VARCHAR(100),
     daily_summary_enabled BOOLEAN NOT NULL DEFAULT FALSE,
     daily_summary_time TIME NOT NULL DEFAULT '06:00:00',

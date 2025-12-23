@@ -32,6 +32,7 @@ class UserState:
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     usage_stats: List[UsageStats] = field(default_factory=list)
     summarization_enabled: bool = True
+    rag_enabled: bool = False
     summarization_stats: List[UsageStats] = field(default_factory=list)
 
     # Database integration fields
@@ -50,6 +51,7 @@ class UserState:
                 self.model = ModelName(db_settings.model)
                 self.temperature = db_settings.temperature
                 self.summarization_enabled = db_settings.summarization_enabled
+                self.rag_enabled = db_settings.rag_enabled
                 self._settings_loaded = True
                 logger.debug(f"Loaded settings for user {self.user_id} from database")
             except Exception as e:
@@ -63,7 +65,8 @@ class UserState:
                     user_id=self.user_id,
                     model=self.model.value,
                     temperature=self.temperature,
-                    summarization_enabled=self.summarization_enabled
+                    summarization_enabled=self.summarization_enabled,
+                    rag_enabled=self.rag_enabled
                 )
                 await self._db_manager.save_user_settings(settings)
                 logger.debug(f"Saved settings for user {self.user_id} to database")
@@ -289,6 +292,19 @@ class StateManager:
         # Save settings to database
         await state.save_settings()
         logger.info(f"User {user_id} model changed: {old_model} -> {model} (history cleared)")
+
+    async def get_user_rag_enabled(self, user_id: int) -> bool:
+        """Get RAG setting for user."""
+        state = await self.get_user_state(user_id)
+        return state.rag_enabled
+
+    async def set_user_rag_enabled(self, user_id: int, enabled: bool):
+        """Set RAG setting for user."""
+        state = await self.get_user_state(user_id)
+        old_enabled = state.rag_enabled
+        state.rag_enabled = enabled
+        await state.save_settings()
+        logger.info(f"User {user_id} RAG changed: {old_enabled} -> {enabled}")
 
     async def set_user_temperature(self, user_id: int, temperature: float):
         """Set temperature for user.

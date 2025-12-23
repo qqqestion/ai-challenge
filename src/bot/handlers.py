@@ -339,6 +339,37 @@ async def summarization_off_command(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(message)
 
 
+async def rag_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /rag_on command - enable RAG context retrieval."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    await state_manager.set_user_rag_enabled(user_id, True)
+    logger.info(f"User {user_id} enabled RAG")
+
+    message = """📚 **RAG включён**
+
+Теперь к твоим запросам будет добавляться релевантный контекст из векторной БД (FAISS).
+Если подходящих данных нет или случится ошибка поиска — я просто отвечу без RAG."""
+
+    await update.message.reply_text(message)
+
+
+async def rag_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /rag_off command - disable RAG context retrieval."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    await state_manager.set_user_rag_enabled(user_id, False)
+    logger.info(f"User {user_id} disabled RAG")
+
+    message = """🚫 **RAG выключен**
+
+Буду отвечать без дополнительного контекста из векторной БД."""
+
+    await update.message.reply_text(message)
+
+
 async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /commands command - show list of all available commands.
 
@@ -377,6 +408,10 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🧠 **Суммаризация:**
 /summarization_on - включить суммаризацию чата
 /summarization_off - выключить суммаризацию чата
+
+🔍 **RAG:**
+/rag_on - включить поиск контекста в FAISS
+/rag_off - выключить RAG
 
 📊 **Статистика:**
 /stats - показать статистику использования

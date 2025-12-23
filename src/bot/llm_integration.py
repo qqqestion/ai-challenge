@@ -1,7 +1,7 @@
 """Integration layer between Telegram bot and LLM API."""
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from ..llm import (
     YandexLLMClient,
@@ -72,8 +72,24 @@ class LLMIntegration:
         # Check if summarization is needed
         await self._check_and_perform_summarization(user_id, user_state)
 
+        # Try to enrich request with RAG context if enabled
+        rag_context_block = None
+        if user_state.rag_enabled:
+            rag_context_block = await self._retrieve_rag_context(user_state, message)
+
+        enriched_message = message
+        if rag_context_block:
+            enriched_message = (
+                "User question:\n"
+                f"{message}\n\n"
+                "Retrieved context (RAG, relevance sorted):\n"
+                f"{rag_context_block}\n\n"
+                "Используй контекст только если он релевантен вопросу. "
+                "Разделяй факты из контекста и из вопроса."
+            )
+
         # Build prompt with NORMAL mode (only mode available)
-        system_prompt, user_message = build_mode_prompt(RickMode.NORMAL, message)
+        system_prompt, user_message = build_mode_prompt(RickMode.NORMAL, enriched_message)
 
         # Build complete prompt structure with conversation history
         messages = build_rick_prompt(
@@ -106,6 +122,7 @@ class LLMIntegration:
         else:
             logger.warning("No initialized MCP managers - tools are disabled")
 
+        tools = []
         # Send to LLM API with user-specific temperature
         try:
             # Tool calling loop (max 3 iterations)
@@ -480,6 +497,54 @@ Summary:"""
     def _get_initialized_managers(self) -> List[MCPManager]:
         """Return only initialized MCP managers."""
         return [m for m in self.mcp_managers if m and m.is_initialized]
+
+    def _get_rag_manager(self) -> Optional[MCPManager]:
+        """Return initialized MCP manager that exposes search_articles tool."""
+        for manager in self._get_initialized_managers():
+            for tool in manager.tools:
+                if tool.get("name") == "search_articles":
+                    return manager
+        return None
+
+    async def _retrieve_rag_context(self, user_state, query: str) -> Optional[str]:
+        """Fetch RAG context via MCP search_articles tool."""
+        user_id = getattr(user_state, "user_id", None)
+        rag_manager = self._get_rag_manager()
+        if not rag_manager:
+            logger.debug("RAG requested but no RAG MCP manager is initialized")
+            return None
+
+        try:
+            result = await rag_manager.call_tool(
+                "search_articles",
+                {"query": query, "top_k": 10},
+                timeout=20.0,
+            )
+            if not result.get("success"):
+                logger.warning(f"RAG tool failed for user {user_id}: {result.get('error')}")
+                return None
+
+            raw_text = result.get("result") or ""
+            data = json.loads(raw_text)
+            hits = data.get("results") if isinstance(data, dict) else None
+            if not hits:
+                logger.info("RAG returned no results")
+                return None
+
+            formatted_lines = []
+            for idx, hit in enumerate(hits, 1):
+                text = hit.get("text", "").strip()
+                source = hit.get("source_path") or "unknown_source"
+                chunk_idx = hit.get("chunk_idx")
+                suffix = f" (chunk {chunk_idx})" if chunk_idx is not None else ""
+                formatted_lines.append(
+                    f"{idx}. [{source}{suffix}] {text}"
+                )
+
+            return "\n".join(formatted_lines)
+        except Exception as e:
+            logger.warning(f"Failed to retrieve RAG context: {e}", exc_info=True)
+            return None
 
     @staticmethod
     def _select_parser(model: ModelName) -> Any:
