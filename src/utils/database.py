@@ -18,7 +18,9 @@ class UserSettings:
     model: str = 'gpt-4o-mini'
     temperature: float = 0.3
     summarization_enabled: bool = True
-    rag_enabled: bool = False
+    rag_enabled: bool = True
+    rag_filter_enabled: bool = False
+    rag_similarity_threshold: float = 0.3
     github_username: Optional[str] = None
     daily_summary_enabled: bool = False
     daily_summary_time: str = '06:00:00'
@@ -165,6 +167,18 @@ class DatabaseManager:
                     "ALTER TABLE user_settings ADD COLUMN rag_enabled BOOLEAN NOT NULL DEFAULT 0"
                 )
                 self._connection.commit()
+            if "rag_filter_enabled" not in column_names:
+                logger.info("Adding missing column user_settings.rag_filter_enabled")
+                self._connection.execute(
+                    "ALTER TABLE user_settings ADD COLUMN rag_filter_enabled BOOLEAN NOT NULL DEFAULT 0"
+                )
+                self._connection.commit()
+            if "rag_similarity_threshold" not in column_names:
+                logger.info("Adding missing column user_settings.rag_similarity_threshold")
+                self._connection.execute(
+                    "ALTER TABLE user_settings ADD COLUMN rag_similarity_threshold REAL NOT NULL DEFAULT 0.3"
+                )
+                self._connection.commit()
         except Exception as e:
             logger.error(f"Failed to ensure additional columns: {e}")
             raise
@@ -210,7 +224,8 @@ class DatabaseManager:
         """
         cursor = self._execute_query(
             """SELECT model, temperature, summarization_enabled, 
-                      rag_enabled, github_username, daily_summary_enabled, daily_summary_time, timezone 
+                      rag_enabled, rag_filter_enabled, rag_similarity_threshold,
+                      github_username, daily_summary_enabled, daily_summary_time, timezone 
                FROM user_settings WHERE user_id = ?""",
             (user_id,)
         )
@@ -223,6 +238,8 @@ class DatabaseManager:
                 temperature=row['temperature'],
                 summarization_enabled=bool(row['summarization_enabled']),
                 rag_enabled=bool(row['rag_enabled']),
+                rag_filter_enabled=bool(row['rag_filter_enabled']),
+                rag_similarity_threshold=row['rag_similarity_threshold'],
                 github_username=row['github_username'],
                 daily_summary_enabled=bool(row['daily_summary_enabled']),
                 daily_summary_time=row['daily_summary_time'],
@@ -242,10 +259,22 @@ class DatabaseManager:
         self._execute_query(
             """INSERT OR REPLACE INTO user_settings
                (user_id, model, temperature, summarization_enabled, rag_enabled,
-                github_username, daily_summary_enabled, daily_summary_time, timezone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (settings.user_id, settings.model, settings.temperature, settings.summarization_enabled, settings.rag_enabled,
-             settings.github_username, settings.daily_summary_enabled, settings.daily_summary_time, settings.timezone)
+                rag_filter_enabled, rag_similarity_threshold, github_username,
+                daily_summary_enabled, daily_summary_time, timezone)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                settings.user_id,
+                settings.model,
+                settings.temperature,
+                settings.summarization_enabled,
+                settings.rag_enabled,
+                settings.rag_filter_enabled,
+                settings.rag_similarity_threshold,
+                settings.github_username,
+                settings.daily_summary_enabled,
+                settings.daily_summary_time,
+                settings.timezone,
+            )
         )
         self._connection.commit()
         logger.debug(f"Saved settings for user {settings.user_id}")

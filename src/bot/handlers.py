@@ -72,6 +72,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /daily_summary_on - включить ежедневное саммари (09:00 МСК)
 /daily_summary_off - выключить саммари
 /test_daily_summary - протестировать саммари прямо сейчас
+/rag_filter_on <0.0-1.0> - включить фильтр похожести RAG
+/rag_filter_off - выключить фильтр похожести
 
 Каждое утро я буду присылать краткое саммари твоей активности за предыдущий день!
 
@@ -339,35 +341,47 @@ async def summarization_off_command(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(message)
 
 
-async def rag_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rag_on command - enable RAG context retrieval."""
+async def rag_filter_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /rag_filter_on command - enable RAG similarity filter and set threshold."""
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
 
-    await state_manager.set_user_rag_enabled(user_id, True)
-    logger.info(f"User {user_id} enabled RAG")
+    if not context.args:
+        await update.message.reply_text(
+            "⚙️ Укажи порог похожести: `/rag_filter_on <0.0-10.0>`\nНапример: `/rag_filter_on 0.35` или `/rag_filter_on 2`"
+        )
+        return
 
-    message = """📚 **RAG включён**
+    try:
+        threshold = float(context.args[0])
+    except ValueError:
+        await update.message.reply_text("Порог должен быть числом от 0.0 до 10.0.")
+        return
 
-Теперь к твоим запросам будет добавляться релевантный контекст из векторной БД (FAISS).
-Если подходящих данных нет или случится ошибка поиска — я просто отвечу без RAG."""
+    if not (0.0 <= threshold <= 10.0):
+        await update.message.reply_text("Порог должен быть в диапазоне 0.0 - 10.0.")
+        return
 
-    await update.message.reply_text(message)
+    await state_manager.set_user_rag_filter(user_id, enabled=True, threshold=threshold)
+    logger.info("User %s enabled RAG filter with threshold %s", user_id, threshold)
+
+    await update.message.reply_text(
+        f"✅ Фильтр похожести включён\nПорог: {threshold:.3f}\n"
+        "Чанки с similarity ниже порога будут отброшены."
+    )
 
 
-async def rag_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rag_off command - disable RAG context retrieval."""
+async def rag_filter_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /rag_filter_off command - disable RAG similarity filter."""
     user_id = update.effective_user.id
     state_manager = context.bot_data["state_manager"]
 
-    await state_manager.set_user_rag_enabled(user_id, False)
-    logger.info(f"User {user_id} disabled RAG")
+    await state_manager.set_user_rag_filter_enabled(user_id, False)
+    logger.info("User %s disabled RAG filter", user_id)
 
-    message = """🚫 **RAG выключен**
-
-Буду отвечать без дополнительного контекста из векторной БД."""
-
-    await update.message.reply_text(message)
+    await update.message.reply_text(
+        "🚫 Фильтр похожести выключен\nВсе найденные чанки RAG будут передаваться без отсечки."
+    )
 
 
 async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -410,8 +424,8 @@ async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /summarization_off - выключить суммаризацию чата
 
 🔍 **RAG:**
-/rag_on - включить поиск контекста в FAISS
-/rag_off - выключить RAG
+/rag_filter_on <0.0-10.0> - включить фильтр по similarity
+/rag_filter_off - выключить фильтр похожести
 
 📊 **Статистика:**
 /stats - показать статистику использования

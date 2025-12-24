@@ -51,6 +51,8 @@ def _build_metadata_from_root(response: Dict[str, Any]) -> Optional[Dict[str, An
         usage: Dict[str, Any] = {}
         if root_usage.get("input_tokens") is not None:
             usage["input_tokens"] = root_usage.get("input_tokens")
+        if root_usage.get("input_cache_read_tokens") is not None:
+            usage["input_cache_read_tokens"] = root_usage.get("input_cache_read_tokens")
         if root_usage.get("output_tokens") is not None:
             usage["output_tokens"] = root_usage.get("output_tokens")
         if usage:

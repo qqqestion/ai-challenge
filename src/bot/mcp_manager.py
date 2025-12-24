@@ -254,7 +254,8 @@ class MCPManager:
             # Extract result text
             if result.content:
                 result_text = result.content[0].text
-                logger.debug(f"Tool {tool_name} returned: {result_text[:200]}...")
+                logger.debug("Tool %s raw result: %s", tool_name, result)
+                logger.debug("Tool %s returned full payload: %s", tool_name, result_text)
 
                 return {
                     "success": True,

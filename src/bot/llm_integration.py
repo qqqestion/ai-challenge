@@ -72,10 +72,8 @@ class LLMIntegration:
         # Check if summarization is needed
         await self._check_and_perform_summarization(user_id, user_state)
 
-        # Try to enrich request with RAG context if enabled
-        rag_context_block = None
-        if user_state.rag_enabled:
-            rag_context_block = await self._retrieve_rag_context(user_state, message)
+        # Try to enrich request with RAG context (always attempt; filtering controlled separately)
+        rag_context_block = await self._retrieve_rag_context(user_state, message)
 
         enriched_message = message
         if rag_context_block:
@@ -150,15 +148,17 @@ class LLMIntegration:
 
                 # Record metadata for statistics
                 metadata = self.response_processor.get_metadata(response)
-                if metadata:
+                if metadata: 
                     logger.debug(f"Response metadata for user {user_id}: {metadata}")
                     usage = metadata.get("usage", {})
-                    input_tokens = usage.get("input_tokens", 0)
+                    input_tokens = usage.get("input_tokens", 0) or 0
+                    cache_read_tokens = usage.get("input_cache_read_tokens", 0) or 0
+                    total_input_tokens = input_tokens + cache_read_tokens
                     output_tokens = usage.get("output_tokens", 0)
                     cost = metadata.get("cost", 0.0)
 
-                    if input_tokens > 0 or output_tokens > 0 or cost > 0:
-                        await user_state.add_usage_stats(input_tokens, output_tokens, cost)
+                    if total_input_tokens > 0 or output_tokens > 0 or cost > 0:
+                        await user_state.add_usage_stats(total_input_tokens, output_tokens, cost)
 
                 # Check if LLM wants to call tools
                 logger.debug(
@@ -335,7 +335,7 @@ class LLMIntegration:
         output_pct = None
 
         if isinstance(usage, dict):
-            input_tokens = usage.get("input_tokens")
+            input_tokens = usage.get("input_tokens") + usage.get("input_cache_read_tokens", 0)
             output_tokens = usage.get("output_tokens")
 
             if input_tokens is not None:
@@ -448,12 +448,14 @@ START COMPRESSION.
             metadata = self.response_processor.get_metadata(response)
             if metadata:
                 usage = metadata.get("usage", {})
-                input_tokens = usage.get("input_tokens", 0)
+                input_tokens = usage.get("input_tokens", 0) or 0
+                cache_read_tokens = usage.get("input_cache_read_tokens", 0) or 0
+                total_input_tokens = input_tokens + cache_read_tokens
                 output_tokens = usage.get("output_tokens", 0)
                 cost = metadata.get("cost", 0.0)
 
-                await user_state.add_summarization_stats(input_tokens, output_tokens, cost)
-                logger.debug(f"Recorded summarization stats for user {user_id}: input={input_tokens}, output={output_tokens}, cost={cost}")
+                await user_state.add_summarization_stats(total_input_tokens, output_tokens, cost)
+                logger.debug(f"Recorded summarization stats for user {user_id}: input={total_input_tokens}, output={output_tokens}, cost={cost}")
 
             # Perform summarization using StateManager (handles DB operations)
             await self.state_manager.perform_summarization(user_id, f"[CHAT SUMMARY: {summary_text}]\n\nContinuing our conversation...")
@@ -514,10 +516,13 @@ Summary:"""
             logger.debug("RAG requested but no RAG MCP manager is initialized")
             return None
 
+        rag_filter_enabled = getattr(user_state, "rag_filter_enabled", False)
+        similarity_threshold = getattr(user_state, "rag_similarity_threshold", 0.3)
+
         try:
             result = await rag_manager.call_tool(
                 "search_articles",
-                {"query": query, "top_k": 10},
+                {"query": query, "top_k": 15},
                 timeout=20.0,
             )
             if not result.get("success"):
@@ -531,17 +536,67 @@ Summary:"""
                 logger.info("RAG returned no results")
                 return None
 
+            def _safe_similarity(hit: Dict[str, Any]) -> float:
+                """Return similarity with fallbacks (rerank_score -> similarity -> score)."""
+                keys = ("rerank_score", "similarity", "score")
+                for key in keys:
+                    value = hit.get(key)
+                    if value is None:
+                        continue
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        continue
+                return 0.0
+
+            sorted_hits = sorted(hits, key=_safe_similarity, reverse=True)
+            total_hits = len(sorted_hits)
+
+            if rag_filter_enabled:
+                filtered_hits = [
+                    hit for hit in sorted_hits if _safe_similarity(hit) >= similarity_threshold
+                ]
+            else:
+                filtered_hits = sorted_hits
+
+            dropped_hits = total_hits - len(filtered_hits)
+
+            if not filtered_hits:
+                logger.info(
+                    "RAG filter removed all results for user %s "
+                    "(threshold=%.3f, total_hits=%s)",
+                    user_id,
+                    similarity_threshold,
+                    total_hits,
+                )
+                return None
+
             formatted_lines = []
-            for idx, hit in enumerate(hits, 1):
+            for idx, hit in enumerate(filtered_hits, 1):
                 text = hit.get("text", "").strip()
                 source = hit.get("source_path") or "unknown_source"
                 chunk_idx = hit.get("chunk_idx")
+                similarity = _safe_similarity(hit)
                 suffix = f" (chunk {chunk_idx})" if chunk_idx is not None else ""
                 formatted_lines.append(
-                    f"{idx}. [{source}{suffix}] {text}"
+                    f"{idx}. [{source}{suffix}] (sim={similarity:.3f}) {text}"
                 )
 
-            return "\n".join(formatted_lines)
+            context_block = "\n".join(formatted_lines)
+
+            logger.info(
+                "RAG stats for user %s: filter=%s, threshold=%.3f, "
+                "total=%s, kept=%s, dropped=%s, context_len=%s",
+                user_id,
+                rag_filter_enabled,
+                similarity_threshold,
+                total_hits,
+                len(filtered_hits),
+                dropped_hits,
+                len(context_block),
+            )
+
+            return context_block
         except Exception as e:
             logger.warning(f"Failed to retrieve RAG context: {e}", exc_info=True)
             return None
