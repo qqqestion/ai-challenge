@@ -1,6 +1,7 @@
 """Integration layer between Telegram bot and LLM API."""
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..llm import (
@@ -73,7 +74,10 @@ class LLMIntegration:
         await self._check_and_perform_summarization(user_id, user_state)
 
         # Try to enrich request with RAG context (always attempt; filtering controlled separately)
-        rag_context_block = await self._retrieve_rag_context(user_state, message)
+        rag_context_block, rag_sources = await self._retrieve_rag_context(
+            user_state,
+            message
+        )
 
         enriched_message = message
         if rag_context_block:
@@ -272,11 +276,35 @@ class LLMIntegration:
                         tool_summary += f"{i}. {tool_name}\n"
                     formatted_response = formatted_response + tool_summary
 
-                # Add metadata block
-                if metadata:
-                    metadata_block = self._format_metadata(metadata, self.llm_client.max_tokens)
-                    if metadata_block:
-                        formatted_response = f"{formatted_response}\n\n{metadata_block}"
+                metadata_block = (
+                    self._format_metadata(metadata, self.llm_client.max_tokens)
+                    if metadata
+                    else None
+                )
+
+                sources_block = ""
+                if rag_sources:
+                    unique_sources: List[str] = []
+                    seen_sources: set[str] = set()
+                    for src in rag_sources:
+                        if not src:
+                            continue
+                        normalized = str(Path(src).expanduser().resolve(strict=False))
+                        if normalized in seen_sources:
+                            continue
+                        seen_sources.add(normalized)
+                        unique_sources.append(normalized)
+
+                    if unique_sources:
+                        sources_lines = ["🔗 Источники:"]
+                        sources_lines.extend(f"- {src}" for src in unique_sources)
+                        sources_block = "\n".join(sources_lines)
+
+                if sources_block:
+                    formatted_response = f"{formatted_response}\n\n{sources_block}"
+
+                if metadata_block:
+                    formatted_response = f"{formatted_response}\n\n{metadata_block}"
 
                 # Save messages to conversation history (async)
                 await user_state.add_message("user", message)
@@ -508,13 +536,21 @@ Summary:"""
                     return manager
         return None
 
-    async def _retrieve_rag_context(self, user_state, query: str) -> Optional[str]:
-        """Fetch RAG context via MCP search_articles tool."""
+    async def _retrieve_rag_context(
+        self,
+        user_state,
+        query: str
+    ) -> tuple[Optional[str], List[str]]:
+        """Fetch RAG context via MCP search_articles tool.
+
+        Returns:
+            Tuple of formatted context block (or None) and list of article paths.
+        """
         user_id = getattr(user_state, "user_id", None)
         rag_manager = self._get_rag_manager()
         if not rag_manager:
             logger.debug("RAG requested but no RAG MCP manager is initialized")
-            return None
+            return None, []
 
         rag_filter_enabled = getattr(user_state, "rag_filter_enabled", False)
         similarity_threshold = getattr(user_state, "rag_similarity_threshold", 0.3)
@@ -527,14 +563,14 @@ Summary:"""
             )
             if not result.get("success"):
                 logger.warning(f"RAG tool failed for user {user_id}: {result.get('error')}")
-                return None
+                return None, []
 
             raw_text = result.get("result") or ""
             data = json.loads(raw_text)
             hits = data.get("results") if isinstance(data, dict) else None
             if not hits:
                 logger.info("RAG returned no results")
-                return None
+                return None, []
 
             def _safe_similarity(hit: Dict[str, Any]) -> float:
                 """Return similarity with fallbacks (rerank_score -> similarity -> score)."""
@@ -569,12 +605,14 @@ Summary:"""
                     similarity_threshold,
                     total_hits,
                 )
-                return None
+                return None, []
 
             formatted_lines = []
+            source_paths: List[str] = []
             for idx, hit in enumerate(filtered_hits, 1):
                 text = hit.get("text", "").strip()
                 source = hit.get("source_path") or "unknown_source"
+                source_paths.append(source)
                 chunk_idx = hit.get("chunk_idx")
                 similarity = _safe_similarity(hit)
                 suffix = f" (chunk {chunk_idx})" if chunk_idx is not None else ""
@@ -596,10 +634,19 @@ Summary:"""
                 len(context_block),
             )
 
-            return context_block
+            unique_sources: List[str] = []
+            seen_sources: set[str] = set()
+            for path in source_paths:
+                normalized = str(Path(path).expanduser().resolve(strict=False))
+                if normalized in seen_sources:
+                    continue
+                seen_sources.add(normalized)
+                unique_sources.append(normalized)
+
+            return context_block, unique_sources
         except Exception as e:
             logger.warning(f"Failed to retrieve RAG context: {e}", exc_info=True)
-            return None
+            return None, []
 
     @staticmethod
     def _select_parser(model: ModelName) -> Any:
