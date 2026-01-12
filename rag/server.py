@@ -34,8 +34,8 @@ logging.basicConfig(
 )
 
 CURRENT_DIR = Path(__file__).parent
-INDEX_PATH = CURRENT_DIR / "articles.faiss"
-META_PATH = CURRENT_DIR / "articles.faiss.meta.json"
+INDEX_PATH = CURRENT_DIR / "py_docs.faiss"
+META_PATH = CURRENT_DIR / "py_docs.faiss.meta.json"
 
 DEFAULT_EMBED_URL = "http://localhost:11434/api/embeddings"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
@@ -102,8 +102,8 @@ def _embed_query(query: str) -> np.ndarray:
 
 TOOLS = [
     Tool(
-        name="search_articles",
-        description="Vector search in article chunks. Returns top matches with full chunk text.",
+        name="search_code",
+        description="Vector search in code chunks. Returns top matches code docs chunks.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -170,7 +170,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     logger.debug("Arguments: %s", arguments)
 
     try:
-        if name == "search_articles":
+        if name == "search_code":
             query = arguments.get("query")
             if not isinstance(query, str) or not query.strip():
                 raise ValueError("Field 'query' must be a non-empty string")
