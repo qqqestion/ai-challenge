@@ -6,7 +6,7 @@ Provides real GitHub API calls using httpx and personal access token.
 
 import logging
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 import httpx
@@ -21,6 +21,50 @@ GITHUB_TOKEN = os.getenv("GITHUB_PERSONAL_TOKEN")
 # GitHub API configuration
 GITHUB_API_BASE = "https://api.github.com"
 GITHUB_API_VERSION = "2022-11-28"
+BINARY_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".bmp",
+    ".ico",
+    ".svg",
+    ".webp",
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mp3",
+    ".wav",
+    ".ogg",
+    ".flac",
+    ".zip",
+    ".tar",
+    ".gz",
+    ".xz",
+    ".bz2",
+    ".7z",
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".class",
+    ".o",
+    ".so",
+    ".dylib",
+    ".dll",
+)
+LOCK_FILE_SUFFIXES = (
+    ".lock",
+    ".lock.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+)
+DEFAULT_MAX_FILE_SIZE = 200_000  # 200 KB safety limit for text content
 
 
 def get_headers() -> dict[str, str]:
@@ -184,6 +228,70 @@ class RepoEventsResponse:
             "total_count": self.total_count,
             "events": [event.to_dict() for event in self.events],
         }
+
+
+def _is_binary_filename(filename: str) -> bool:
+    """Return True if filename looks like binary/asset file."""
+    lower = filename.lower()
+    return lower.endswith(BINARY_EXTENSIONS)
+
+
+def _is_lock_file(filename: str) -> bool:
+    """Return True if filename is a lock/metadata file."""
+    lower = filename.lower()
+    return any(lower.endswith(suffix) for suffix in LOCK_FILE_SUFFIXES)
+
+
+async def _fetch_file_content(
+    client: httpx.AsyncClient,
+    owner: str,
+    repo: str,
+    path: str,
+    ref: str,
+    max_file_size: int,
+) -> tuple[str | None, str | None]:
+    """Fetch raw file content for a specific ref with safety checks.
+
+    Returns:
+        Tuple (content, error). Error is None on success.
+    """
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
+    headers = get_headers()
+    headers["Accept"] = "application/vnd.github.v3.raw"
+
+    try:
+        response = await client.get(
+            url,
+            headers=headers,
+            params={"ref": ref},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+
+        content_bytes = response.content
+        if len(content_bytes) > max_file_size:
+            return None, "too_large"
+
+        try:
+            return content_bytes.decode("utf-8"), None
+        except UnicodeDecodeError:
+            return None, "binary_or_non_utf8"
+
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "HTTP error fetching content %s at %s: %s",
+            path,
+            ref,
+            exc.response.status_code,
+        )
+        if exc.response.status_code == 404:
+            return None, "not_found"
+        if exc.response.status_code in (401, 403):
+            return None, "forbidden"
+        return None, f"http_error_{exc.response.status_code}"
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Unexpected error fetching %s: %s", path, exc, exc_info=True)
+        return None, "unexpected_error"
 
 
 async def get_user(username: str) -> dict[str, Any]:
@@ -518,3 +626,144 @@ async def get_repo_events(owner: str, repo: str, limit: int = 30) -> dict[str, A
         except Exception as e:
             logger.error(f"Error fetching events for {owner}/{repo}: {e}")
             return {"error": str(e)}
+
+
+async def get_pull_request_files(
+    owner: str,
+    repo: str,
+    pull_number: int,
+    include_contents: bool = True,
+    max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+) -> dict[str, Any]:
+    """
+    Get PR metadata, changed files, patches, and optionally full file contents.
+
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        pull_number: Pull request number
+        include_contents: Whether to fetch full file content for text files
+        max_file_size: Max allowed size (bytes) for content fetch
+
+    Returns:
+        Dictionary with pull request info and file details.
+    """
+    pr_url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/pulls/{pull_number}"
+    files_url = f"{pr_url}/files"
+
+    async with httpx.AsyncClient() as client:
+        try:
+            pr_response = await client.get(pr_url, headers=get_headers(), timeout=15.0)
+            pr_response.raise_for_status()
+            pr_data = pr_response.json()
+            head_sha = pr_data.get("head", {}).get("sha")
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            logger.error(
+                "HTTP error fetching PR %s/%s#%s: %s",
+                owner,
+                repo,
+                pull_number,
+                status,
+            )
+            if status in (401, 403):
+                return {"error": "access_forbidden"}
+            if status == 404:
+                return {"error": "pull_request_not_found"}
+            return {"error": f"http_error_{status}"}
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Error fetching PR %s/%s#%s: %s", owner, repo, pull_number, exc)
+            return {"error": "unexpected_error"}
+
+        files: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            try:
+                resp = await client.get(
+                    files_url,
+                    headers=get_headers(),
+                    params={"per_page": 100, "page": page},
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+                batch = resp.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                logger.error(
+                    "HTTP error fetching PR files %s/%s#%s page %s: %s",
+                    owner,
+                    repo,
+                    pull_number,
+                    page,
+                    status,
+                )
+                return {"error": f"http_error_{status}"}
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error("Error fetching PR files page %s: %s", page, exc)
+                return {"error": "unexpected_error"}
+
+            if not batch:
+                break
+
+            for file_data in batch:
+                filename = file_data.get("filename", "")
+                file_entry: dict[str, Any] = {
+                    "filename": filename,
+                    "status": file_data.get("status"),
+                    "additions": file_data.get("additions"),
+                    "deletions": file_data.get("deletions"),
+                    "changes": file_data.get("changes"),
+                    "patch": file_data.get("patch"),
+                    "sha": file_data.get("sha"),
+                    "blob_url": file_data.get("blob_url"),
+                    "raw_url": file_data.get("raw_url"),
+                    "skip_reason": None,
+                }
+
+                if _is_binary_filename(filename):
+                    file_entry["skip_reason"] = "binary_file"
+                elif _is_lock_file(filename):
+                    file_entry["skip_reason"] = "lock_file"
+                elif file_entry["patch"] is None:
+                    file_entry["skip_reason"] = "patch_not_available"
+
+                if include_contents and not file_entry["skip_reason"] and head_sha:
+                    content, error = await _fetch_file_content(
+                        client=client,
+                        owner=owner,
+                        repo=repo,
+                        path=filename,
+                        ref=head_sha,
+                        max_file_size=max_file_size,
+                    )
+                    if error:
+                        file_entry["skip_reason"] = error
+                    else:
+                        file_entry["content"] = content
+
+                files.append(file_entry)
+
+            if "next" not in resp.links:
+                break
+            page += 1
+
+    return {
+        "pull_request": {
+            "number": pull_number,
+            "title": pr_data.get("title"),
+            "author": pr_data.get("user", {}).get("login"),
+            "state": pr_data.get("state"),
+            "url": pr_data.get("html_url"),
+            "head": {
+                "ref": pr_data.get("head", {}).get("ref"),
+                "sha": pr_data.get("head", {}).get("sha"),
+                "label": pr_data.get("head", {}).get("label"),
+            },
+            "base": {
+                "ref": pr_data.get("base", {}).get("ref"),
+                "sha": pr_data.get("base", {}).get("sha"),
+                "label": pr_data.get("base", {}).get("label"),
+            },
+            "files": files,
+        }
+    }

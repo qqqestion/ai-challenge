@@ -74,6 +74,7 @@ async def initialize_application():
     # Initialize MCP managers (optional)
     mcp_managers: list[MCPManager] = []
     git_mcp_manager: MCPManager | None = None
+    github_mcp_manager: MCPManager | None = None
     rag_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
@@ -100,13 +101,16 @@ async def initialize_application():
     if settings.mcp_enabled:
         base_dir = Path(__file__).resolve().parent.parent
         git_path = base_dir / "git_mcp" / "server.py"
+        github_path = base_dir / "github_mcp" / "server.py"
         rag_path = base_dir / "rag" / "server.py"
 
         git_mcp_manager = await _init_manager(git_path, "git_mcp")
+        github_mcp_manager = await _init_manager(github_path, "github_mcp")
         rag_mcp_manager = await _init_manager(rag_path, "rag_mcp")
 
         for manager in (
             git_mcp_manager,
+            github_mcp_manager,
             rag_mcp_manager,
         ):
             if manager:

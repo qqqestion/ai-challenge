@@ -19,6 +19,7 @@ from .handlers import (
     long_prompt_command,
     change_model_command,
     change_model_callback,
+    review_command,
     stats_command,
     summarization_on_command,
     summarization_off_command,
@@ -88,6 +89,7 @@ class RickBot:
         app.add_handler(CommandHandler("long_prompt", long_prompt_command))
         app.add_handler(CommandHandler("change_model", change_model_command))
         app.add_handler(CommandHandler("stats", stats_command))
+        app.add_handler(CommandHandler("review", review_command))
         app.add_handler(CommandHandler("summarization_on", summarization_on_command))
         app.add_handler(CommandHandler("summarization_off", summarization_off_command))
         app.add_handler(CommandHandler("rag_filter_on", rag_filter_on_command))
@@ -118,7 +120,7 @@ class RickBot:
         """Set bot commands menu for Telegram."""
         from telegram import BotCommand
         
-        commands = [
+        commands = [ 
             # BotCommand("start", "Начать работу с ботом"),
             BotCommand("help", "Подробная справка"),
             BotCommand("commands", "Список всех команд"),
@@ -128,6 +130,7 @@ class RickBot:
             BotCommand("change_model", "Выбрать модель"),
             BotCommand("reset", "Очистить историю"),
             BotCommand("stats", "Показать статистику использования"),
+            BotCommand("review", "Обзор PR по ссылке"),
             BotCommand("summarization_on", "Включить суммаризацию чата"),
             BotCommand("summarization_off", "Выключить суммаризацию чата"),
             BotCommand("rag_filter_on", "Включить фильтр RAG"),

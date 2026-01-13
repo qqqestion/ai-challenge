@@ -28,6 +28,7 @@ from tools import (  # noqa: E402
     get_repo_info,
     get_user_events,
     get_repo_events,
+    get_pull_request_files,
 )
 
 
@@ -139,6 +140,41 @@ TOOLS = [
             "required": ["owner", "repo"],
         },
     ),
+    Tool(
+        name="get_pull_request_files",
+        description=(
+            "Get PR metadata, changed files list, patches, and text contents "
+            "for non-binary files"
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "owner": {
+                    "type": "string",
+                    "description": "Repository owner (user or org)",
+                },
+                "repo": {
+                    "type": "string",
+                    "description": "Repository name",
+                },
+                "pull_number": {
+                    "type": "number",
+                    "description": "Pull request number",
+                },
+                "include_contents": {
+                    "type": "boolean",
+                    "description": "Fetch full file contents when possible",
+                    "default": True,
+                },
+                "max_file_size": {
+                    "type": "number",
+                    "description": "Max file size (bytes) to fetch content for",
+                    "default": 200000,
+                },
+            },
+            "required": ["owner", "repo", "pull_number"],
+        },
+    ),
 ]
 
 
@@ -182,6 +218,14 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         elif name == "get_repo_events":
             result = await get_repo_events(
                 arguments["owner"], arguments["repo"], arguments.get("limit", 30)
+            )
+        elif name == "get_pull_request_files":
+            result = await get_pull_request_files(
+                arguments["owner"],
+                arguments["repo"],
+                int(arguments["pull_number"]),
+                arguments.get("include_contents", True),
+                int(arguments.get("max_file_size", 200000)),
             )
         else:
             logger.error(f"Unknown tool requested: {name}")
