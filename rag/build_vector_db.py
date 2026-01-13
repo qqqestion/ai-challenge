@@ -99,6 +99,7 @@ def chunk_text(
 
 
 def iter_markdown_files(root: pathlib.Path, extensions: set[str]) -> Iterable[pathlib.Path]:
+    """Recursively yield markdown files under root filtered by extensions."""
     for path in root.rglob("*"):
         if path.is_file() and path.suffix.lower() in extensions:
             yield path

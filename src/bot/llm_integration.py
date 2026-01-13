@@ -124,7 +124,6 @@ class LLMIntegration:
         else:
             logger.warning("No initialized MCP managers - tools are disabled")
 
-        tools = []
         # Send to LLM API with user-specific temperature
         try:
             # Tool calling loop (max 3 iterations)

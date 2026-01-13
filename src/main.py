@@ -73,9 +73,7 @@ async def initialize_application():
 
     # Initialize MCP managers (optional)
     mcp_managers: list[MCPManager] = []
-    github_mcp_manager: MCPManager | None = None
-    report_mcp_manager: MCPManager | None = None
-    android_mcp_manager: MCPManager | None = None
+    git_mcp_manager: MCPManager | None = None
     rag_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
@@ -101,20 +99,14 @@ async def initialize_application():
 
     if settings.mcp_enabled:
         base_dir = Path(__file__).resolve().parent.parent
-        github_path = base_dir / "github_mcp" / "server.py"
-        report_path = base_dir / "report_mcp" / "server.py"
-        android_path = base_dir / "android_mcp" / "server.py"
+        git_path = base_dir / "git_mcp" / "server.py"
         rag_path = base_dir / "rag" / "server.py"
 
-        github_mcp_manager = await _init_manager(github_path, "github_mcp")
-        report_mcp_manager = await _init_manager(report_path, "report_mcp")
-        android_mcp_manager = await _init_manager(android_path, "android_mcp")
+        git_mcp_manager = await _init_manager(git_path, "git_mcp")
         rag_mcp_manager = await _init_manager(rag_path, "rag_mcp")
 
         for manager in (
-            github_mcp_manager,
-            report_mcp_manager,
-            android_mcp_manager,
+            git_mcp_manager,
             rag_mcp_manager,
         ):
             if manager:
@@ -141,22 +133,8 @@ async def initialize_application():
     )
     logger.info("✓ Bot initialized")
 
-    # Initialize DailySummaryManager (only if GitHub MCP is available)
+    # DailySummaryManager requires GitHub MCP; skipped
     daily_summary_manager = None
-    if github_mcp_manager and github_mcp_manager.is_initialized:
-        logger.info("Initializing DailySummaryManager...")
-        daily_summary_manager = DailySummaryManager(
-            mcp_manager=github_mcp_manager,
-            llm_integration=llm_integration,
-            db_manager=db_manager,
-            bot=bot.application.bot
-        )
-        
-        # Add to bot_data for access from handlers
-        bot.application.bot_data["daily_summary_manager"] = daily_summary_manager
-        logger.info("✓ DailySummaryManager initialized")
-    else:
-        logger.warning("⚠ DailySummaryManager not initialized (MCP not available)")
 
     logger.info("=" * 60)
     logger.info("Initialization complete!")
