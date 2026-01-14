@@ -18,22 +18,35 @@ logger = get_logger(__name__)
 class MCPManager:
     """Manager for MCP server connection and tool execution."""
 
-    def __init__(self, server_script_path: Optional[str] = None):
+    def __init__(
+        self,
+        server_script_path: Optional[str] = None,
+        server_command: Optional[str] = None,
+        server_args: Optional[List[str]] = None,
+    ):
         """Initialize MCP Manager.
 
         Args:
             server_script_path: Path to MCP server script (default: github_mcp/server.py)
+            server_command: Custom MCP server executable (non-Python servers)
+            server_args: Arguments for the custom MCP server executable
         """
         self.server_script_path = server_script_path or str(
             Path(__file__).parent.parent.parent / "github_mcp" / "server.py"
         )
+        self.server_command = server_command
+        self.server_args = server_args or []
         self.session: Optional[ClientSession] = None
         self.transport = None
         self.read_stream = None
         self.write_stream = None
         self.tools: List[Dict[str, Any]] = []
         self._initialized = False
-        logger.info(f"MCPManager created with server path: {self.server_script_path}")
+        logger.info(
+            "MCPManager created with server path: %s, custom command: %s",
+            self.server_script_path,
+            self.server_command,
+        )
 
     async def initialize(self) -> bool:
         """Initialize MCP connection and load tools.
@@ -48,17 +61,29 @@ class MCPManager:
         try:
             logger.info("=" * 60)
             logger.info("Initializing MCP server connection...")
-            logger.info(f"Server script: {self.server_script_path}")
+            if self.server_command:
+                logger.info(
+                    "Using custom MCP command: %s with args: %s",
+                    self.server_command,
+                    self.server_args,
+                )
+                server_params = StdioServerParameters(
+                    command=self.server_command,
+                    args=self.server_args,
+                    env=None,
+                )
+            else:
+                logger.info(f"Server script: {self.server_script_path}")
 
-            # Server parameters - use current Python interpreter to ensure venv is used
-            python_executable = sys.executable
-            logger.info(f"Using Python interpreter: {python_executable}")
+                # Server parameters - use current Python interpreter to ensure venv is used
+                python_executable = sys.executable
+                logger.info(f"Using Python interpreter: {python_executable}")
 
-            server_params = StdioServerParameters(
-                command=python_executable,
-                args=[self.server_script_path],
-                env=None,
-            )
+                server_params = StdioServerParameters(
+                    command=python_executable,
+                    args=[self.server_script_path],
+                    env=None,
+                )
             logger.debug(f"Server parameters: command={server_params.command}, args={server_params.args}")
 
             # Create client and connect using async context manager

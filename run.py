@@ -14,12 +14,12 @@ def print_banner():
     banner = r"""
     ╔═══════════════════════════════════════════════════════╗
     ║                                                       ║
-    ║   🧪 Rick Sanchez Telegram Bot 🧪                    ║
+    ║   Rick Sanchez Telegram Bot                           ║
     ║                                                       ║
-    ║   *burp* Wubba Lubba Dub Dub!                       ║
+    ║   Wubba Lubba Dub Dub!                                ║
     ║                                                       ║
-    ║   Version: 1.0.0                                     ║
-    ║   Powered by: Yandex Cloud LLM                       ║
+    ║   Version: 1.0.0                                      ║
+    ║   Powered by: Yandex Cloud LLM                        ║
     ║                                                       ║
     ╚═══════════════════════════════════════════════════════╝
     """

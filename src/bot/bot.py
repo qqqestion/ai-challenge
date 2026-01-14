@@ -5,31 +5,16 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     filters
 )
 from ..config import get_logger, Settings
 from .state_manager import StateManager
 from .handlers import (
-    start_command,
     help_command,
     reset_command,
     temperature_command,
-    commands_command,
-    long_prompt_command,
-    change_model_command,
-    change_model_callback,
     review_command,
     stats_command,
-    summarization_on_command,
-    summarization_off_command,
-    rag_filter_on_command,
-    rag_filter_off_command,
-    tools_command,
-    set_github_username_command,
-    daily_summary_on_command,
-    daily_summary_off_command,
-    test_daily_summary_command,
     handle_message,
     error_handler
 )
@@ -81,24 +66,11 @@ class RickBot:
         app = self.application
         
         # Command handlers
-        app.add_handler(CommandHandler("start", start_command))
         app.add_handler(CommandHandler("help", help_command))
-        app.add_handler(CommandHandler("commands", commands_command))
         app.add_handler(CommandHandler("reset", reset_command))
         app.add_handler(CommandHandler("temperature", temperature_command))
-        app.add_handler(CommandHandler("long_prompt", long_prompt_command))
-        app.add_handler(CommandHandler("change_model", change_model_command))
         app.add_handler(CommandHandler("stats", stats_command))
         app.add_handler(CommandHandler("review", review_command))
-        app.add_handler(CommandHandler("summarization_on", summarization_on_command))
-        app.add_handler(CommandHandler("summarization_off", summarization_off_command))
-        app.add_handler(CommandHandler("rag_filter_on", rag_filter_on_command))
-        app.add_handler(CommandHandler("rag_filter_off", rag_filter_off_command))
-        app.add_handler(CommandHandler("tools", tools_command))
-        app.add_handler(CommandHandler("set_github_username", set_github_username_command))
-        app.add_handler(CommandHandler("daily_summary_on", daily_summary_on_command))
-        app.add_handler(CommandHandler("daily_summary_off", daily_summary_off_command))
-        app.add_handler(CommandHandler("test_daily_summary", test_daily_summary_command))
         
         # Message handler (for non-command messages)
         app.add_handler(
@@ -108,9 +80,6 @@ class RickBot:
             )
         )
 
-        # Callback query handler for model selection
-        app.add_handler(CallbackQueryHandler(change_model_callback, pattern="^change_model:"))
-        
         # Error handler
         app.add_error_handler(error_handler)
         
@@ -121,24 +90,11 @@ class RickBot:
         from telegram import BotCommand
         
         commands = [ 
-            # BotCommand("start", "Начать работу с ботом"),
             BotCommand("help", "Подробная справка"),
-            BotCommand("commands", "Список всех команд"),
-            BotCommand("tools", "Показать доступные GitHub инструменты"),
-            BotCommand("temperature", "Настройка температуры"),
-            BotCommand("long_prompt", "Отправить длинный заранее заданный промпт"),
-            BotCommand("change_model", "Выбрать модель"),
+            BotCommand("temperature", "Настройка температуры"), 
             BotCommand("reset", "Очистить историю"),
             BotCommand("stats", "Показать статистику использования"),
             BotCommand("review", "Обзор PR по ссылке"),
-            BotCommand("summarization_on", "Включить суммаризацию чата"),
-            BotCommand("summarization_off", "Выключить суммаризацию чата"),
-            BotCommand("rag_filter_on", "Включить фильтр RAG"),
-            BotCommand("rag_filter_off", "Выключить фильтр RAG"),
-            BotCommand("set_github_username", "Установить GitHub username"),
-            BotCommand("daily_summary_on", "Включить ежедневное саммари GitHub"),
-            BotCommand("daily_summary_off", "Выключить ежедневное саммари"),
-            BotCommand("test_daily_summary", "Протестировать саммари"),
         ]
         
         try:
@@ -169,7 +125,7 @@ class RickBot:
         
         # Start polling
         await self.application.updater.start_polling(
-            allowed_updates=["message", "callback_query"]
+            allowed_updates=["message"]
         )
         
         logger.info("Bot is running! Press Ctrl+C to stop.")
@@ -203,6 +159,6 @@ class RickBot:
         """Run the bot (blocking call)."""
         logger.info("Running Rick Bot in polling mode...")
         self.application.run_polling(
-            allowed_updates=["message", "callback_query"]
+            allowed_updates=["message"]
         )
 

@@ -2,16 +2,13 @@
 
 import json
 import re
-from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
 
 from ..config import get_logger
-from ..llm.models import ModelName
-from .message_processor import send_response
 
 logger = get_logger(__name__)
 PR_URL_PATTERN = re.compile(
@@ -19,42 +16,6 @@ PR_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MAX_REVIEW_PROMPT_CHARS = 14000  # защитный лимит на вход в LLM
-
-
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user = update.effective_user
-    logger.info(f"User {user.id} ({user.username}) started the bot")
-
-    welcome_message = """*burp* Слушай, я Рик Санчез, самый гениальный ученый во всей 
-чёртовой мультивселенной. *urp* И по какой-то причине я застрял здесь, отвечая на твои 
-вопросы.
-
-Можешь спрашивать что угодно - о науке, технологиях, или просто поболтать. 
-Только не задавай тупых вопросов, ладно? Хотя... *urp* кого я обманываю, 
-ты всё равно их зададешь.
-
-🔧 У меня есть доступ к GitHub инструментам - используй /tools чтобы посмотреть
-
-📊 Могу отправлять ежедневные саммари твоей GitHub активности - /daily_summary_on
-
-🌡️ Можешь настроить температуру моих ответов через /temperature
-
-Основные команды:
-/help - подробная справка
-/commands - список всех команд
-/tools - показать GitHub инструменты
-/set_github_username - установить GitHub username
-/daily_summary_on - включить ежедневное саммари
-
-Wubba Lubba Dub Dub! 🧪"""
-
-    await update.message.reply_text(welcome_message)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,41 +30,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """*urp* Ладно, объясню для особо одарённых:
 
 📝 **Как использовать:**
-Просто пиши мне сообщения - я отвечу. Иногда саркастично, иногда полезно, 
+Просто пиши мне сообщения — я отвечу. Иногда саркастично, иногда полезно, 
 всегда гениально.
 
-🔧 **GitHub инструменты:**
-/tools - показать все доступные GitHub инструменты
-/review <ссылка на PR> - обзор изменений PR через github_mcp
-Я могу искать репозитории, смотреть issues, получать информацию о пользователях и многое другое!
+📊 **Обзор PR:**
+/review <ссылка на PR> — обзор изменений PR через github_mcp
 
-📊 **Ежедневное саммари GitHub:**
-/set_github_username <username> - установить свой GitHub username
-/daily_summary_on - включить ежедневное саммари (09:00 МСК)
-/daily_summary_off - выключить саммари
-/test_daily_summary - протестировать саммари прямо сейчас
-/rag_filter_on <0.0-1.0> - включить фильтр похожести RAG
-/rag_filter_off - выключить фильтр похожести
+🌡️ **Температура:**
+/temperature — показать текущую температуру
+/temperature <0.0-2.0> — установить температуру ответов
 
-Каждое утро я буду присылать краткое саммари твоей активности за предыдущий день!
-
-🌡️ **Настройка температуры:**
-/temperature - показать текущую температуру
-/temperature 0.0 - максимальная точность
-/temperature 0.7 - баланс креативности
-/temperature 2.0 - максимальная креативность
-
-⚙️ **Команды:**
-/start - начать заново
-/help - эта справка
-/commands - список всех команд
-/change_model - выбрать модель
-/reset - очистить историю разговора
-/stats - показать статистику использования
-
-🧠 **Суммаризация чата:**
-/summarization_on - включить автоматическую суммаризацию (при 20+ сообщениях)
-/summarization_off - выключить суммаризацию
+⚙️ **Прочее:**
+/reset — очистить историю разговора
+/stats — показать статистику использования
+/help — эта справка
 
 💡 **Советы:**
 • Я помню контекст разговора
@@ -307,245 +247,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(stats_text)
 
 
-async def summarization_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /summarization_on command - enable chat summarization.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-
-    await state_manager.set_user_summarization_enabled(user_id, True)
-    logger.info(f"User {user_id} enabled summarization")
-
-    message = """🧠 **Суммаризация чата включена!**
-
-*urp* Теперь, когда в нашем разговоре накопится 20+ сообщений, я буду автоматически
-суммировать историю чата, чтобы сохранить память, но не переполнять её.
-
-Это поможет поддерживать длинные разговоры без потери контекста!"""
-
-    await update.message.reply_text(message)
-
-
-async def summarization_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /summarization_off command - disable chat summarization.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-
-    await state_manager.set_user_summarization_enabled(user_id, False)
-    logger.info(f"User {user_id} disabled summarization")
-
-    message = """🚫 **Суммаризация чата выключена!**
-
-*burp* Теперь я буду хранить полную историю нашего разговора без суммаризации.
-Это может привести к более длинным ответам, но я запомню всё!"""
-
-    await update.message.reply_text(message)
-
-
-async def rag_filter_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rag_filter_on command - enable RAG similarity filter and set threshold."""
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-
-    if not context.args:
-        await update.message.reply_text(
-            "⚙️ Укажи порог похожести: `/rag_filter_on <0.0-10.0>`\nНапример: `/rag_filter_on 0.35` или `/rag_filter_on 2`"
-        )
-        return
-
-    try:
-        threshold = float(context.args[0])
-    except ValueError:
-        await update.message.reply_text("Порог должен быть числом от 0.0 до 10.0.")
-        return
-
-    if not (0.0 <= threshold <= 10.0):
-        await update.message.reply_text("Порог должен быть в диапазоне 0.0 - 10.0.")
-        return
-
-    await state_manager.set_user_rag_filter(user_id, enabled=True, threshold=threshold)
-    logger.info("User %s enabled RAG filter with threshold %s", user_id, threshold)
-
-    await update.message.reply_text(
-        f"✅ Фильтр похожести включён\nПорог: {threshold:.3f}\n"
-        "Чанки с similarity ниже порога будут отброшены."
-    )
-
-
-async def rag_filter_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /rag_filter_off command - disable RAG similarity filter."""
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-
-    await state_manager.set_user_rag_filter_enabled(user_id, False)
-    logger.info("User %s disabled RAG filter", user_id)
-
-    await update.message.reply_text(
-        "🚫 Фильтр похожести выключен\nВсе найденные чанки RAG будут передаваться без отсечки."
-    )
-
-
-async def commands_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /commands command - show list of all available commands.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    logger.info(f"User {user_id} requested commands list")
-
-    commands_text = """📋 **Список всех команд:**
-
-🔹 **Основные команды:**
-/start - начать работу с ботом
-/help - подробная справка
-/commands - этот список команд
-
-🔧 **GitHub инструменты:**
-/tools - показать все доступные GitHub инструменты
-/review <ссылка на PR> - обзор изменений PR через github_mcp
-
-📊 **Ежедневное саммари GitHub:**
-/set_github_username <username> - установить GitHub username
-/daily_summary_on - включить ежедневное саммари (09:00 МСК)
-/daily_summary_off - выключить ежедневное саммари
-/test_daily_summary - протестировать саммари вручную
-
-🌡️ **Настройки:**
-/temperature - показать текущую температуру
-/temperature <0.0-2.0> - установить температуру ответов
-/long_prompt - отправить заранее заготовленный длинный промпт
-
-⚙️ **Управление:**
-/reset - очистить историю разговора
-/change_model - выбрать модель для ответов
-
-🧠 **Суммаризация:**
-/summarization_on - включить суммаризацию чата
-/summarization_off - выключить суммаризацию чата
-
-🔍 **RAG:**
-/rag_filter_on <0.0-10.0> - включить фильтр по similarity
-/rag_filter_off - выключить фильтр похожести
-
-📊 **Статистика:**
-/stats - показать статистику использования
-
-💬 **Использование:**
-Просто напиши любое сообщение (не команду) - я отвечу с установленной температурой.
-
-*urp* Всё понятно? Используй команды и наслаждайся общением!"""
-
-    await update.message.reply_text(commands_text)
-
-
-async def long_prompt_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /long_prompt command: send predefined long prompt to the model."""
-    user_id = update.effective_user.id
-    llm_integration = context.bot_data["llm_integration"]
-
-    await update.message.chat.send_action(ChatAction.TYPING)
-
-    try:
-        base_dir = Path(__file__).resolve().parent.parent.parent
-        prompt_path = base_dir / "metrics" / "prompt_3.md"
-        prompt_text = prompt_path.read_text(encoding="utf-8")
-
-        response_text = await llm_integration.process_message(user_id, prompt_text)
-        await send_response(update, response_text)
-    except FileNotFoundError:
-        logger.error("Long prompt file not found at metrics/prompt_3.md")
-        await update.message.reply_text(
-            "Не удалось найти файл промпта (metrics/prompt_3.md)."
-        )
-    except Exception as e:
-        logger.error(
-            f"Error processing /long_prompt for user {user_id}: {e}", exc_info=True
-        )
-        await update.message.reply_text(
-            "*urp* Что-то пошло не так при обработке длинного промпта. Попробуй позже."
-        )
-
-
-def build_model_keyboard(active_model: ModelName | None) -> InlineKeyboardMarkup:
-    """Build inline keyboard with available models.
-
-    Args:
-        active_model: Currently selected model to highlight.
-    """
-    buttons = []
-    row = []
-    for idx, model in enumerate(ModelName):
-        label = (
-            f"✅ {model.value}"
-            if active_model and model == active_model
-            else model.value
-        )
-        row.append(
-            InlineKeyboardButton(
-                text=label,
-                callback_data=f"change_model:{model.value}",
-            )
-        )
-        if (idx + 1) % 2 == 0:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    return InlineKeyboardMarkup(buttons)
-
-
-async def change_model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /change_model command: show inline keyboard with models."""
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    current_model = await state_manager.get_user_model(user_id)
-    keyboard = build_model_keyboard(current_model)
-    await update.message.reply_text(
-        f"Выбери модель для ответов (текущая: {current_model.value}):",
-        reply_markup=keyboard,
-    )
-
-
-async def change_model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle model selection from inline keyboard."""
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data or ""
-    prefix = "change_model:"
-    if not data.startswith(prefix):
-        return
-
-    model_id = data[len(prefix) :]
-    model = next((m for m in ModelName if m.value == model_id), None)
-    if not model:
-        await query.edit_message_text(
-            "Неизвестная модель. Попробуй ещё раз через /change_model."
-        )
-        return
-
-    user_id = query.from_user.id
-    state_manager = context.bot_data["state_manager"]
-    await state_manager.set_user_model(user_id, model)
-    keyboard = build_model_keyboard(model)
-
-    await query.edit_message_text(
-        f"Модель установлена: {model.value}",
-        reply_markup=keyboard,
-    )
-
-
 def _find_mcp_manager_for_tool(llm_integration, tool_name: str):
     """Return MCP manager that exposes the requested tool."""
     if not llm_integration:
@@ -665,77 +366,6 @@ def _build_pr_review_prompt(
     return prompt, skipped
 
 
-async def tools_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /tools command - show available MCP tools.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    logger.info(f"User {user_id} requested tools list")
-
-    llm_integration = context.bot_data["llm_integration"]
-    tools = llm_integration.get_all_tools()
-
-    if not tools:
-        message = """*urp* Извини, но инструменты сейчас недоступны.
-MCP сервер(а) не инициализирован(ы) или инструментов нет.
-
-*burp* Попробуй перезапустить бота или проверь настройки."""
-        await update.message.reply_text(message)
-        return
-
-    # Build tools list message
-    tools_lines = [
-        "🔧 **Доступные инструменты MCP:**",
-        "",
-        "*urp* Вот что я могу сделать:",
-        "",
-    ]
-
-    for i, tool in enumerate(tools, 1):
-        name = tool["name"]
-        description = tool["description"]
-        schema = tool.get("input_schema", {})
-        properties = schema.get("properties", {})
-        required = schema.get("required", [])
-
-        # Add tool header
-        tools_lines.append(f"**{i}. {name}**")
-        tools_lines.append(f"   {description}")
-
-        # Add parameters if any
-        if properties:
-            tools_lines.append("   ")
-            tools_lines.append("   *Параметры:*")
-            for param_name, param_info in properties.items():
-                param_type = param_info.get("type", "any")
-                param_desc = param_info.get("description", "")
-                is_required = param_name in required
-                req_marker = "обязательный" if is_required else "опциональный"
-                tools_lines.append(
-                    f"   • `{param_name}` ({param_type}, {req_marker}) - {param_desc}"
-                )
-
-        tools_lines.append("")
-
-    tools_lines.extend(
-        [
-            "*burp* Просто попроси меня что-нибудь сделать с GitHub,",
-            "и я автоматически использую нужный инструмент!",
-            "",
-            "Например:",
-            "• 'Покажи информацию о пользователе octocat'",
-            "• 'Найди репозитории по запросу telegram bot'",
-            "• 'Покажи issues в репозитории python/cpython'",
-        ]
-    )
-
-    tools_text = "\n".join(tools_lines)
-    await update.message.reply_text(tools_text)
-
-
 async def review_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /review command - analyze GitHub PR via MCP."""
     user_id = update.effective_user.id
@@ -828,172 +458,6 @@ async def review_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         response_text, disable_web_page_preview=True, parse_mode=None
     )
-
-
-async def set_github_username_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /set_github_username command - set GitHub username for user.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    db_manager = state_manager.db_manager
-
-    # Check if username is provided
-    if not context.args:
-        # Show current username
-        current_username = await db_manager.get_github_username(user_id)
-        if current_username:
-            message = f"""🐙 **Текущий GitHub username:** `{current_username}`
-
-Чтобы изменить, используй:
-`/set_github_username <новый_username>`"""
-        else:
-            message = """🐙 **GitHub username не установлен**
-
-Установи свой GitHub username для получения ежедневных саммари:
-`/set_github_username <твой_username>`
-
-Например: `/set_github_username octocat`"""
-
-        await update.message.reply_text(message)
-        return
-
-    # Set new username
-    username = context.args[0].strip()
-
-    # Remove @ if present
-    if username.startswith("@"):
-        username = username[1:]
-
-    try:
-        await db_manager.set_github_username(user_id, username)
-        logger.info(f"User {user_id} set GitHub username: {username}")
-
-        message = f"""✅ **GitHub username установлен:** `{username}`
-
-*urp* Теперь можешь включить ежедневное саммари:
-`/daily_summary_on`
-
-Или протестируй саммари прямо сейчас:
-`/test_daily_summary`"""
-
-        await update.message.reply_text(message)
-
-    except Exception as e:
-        logger.error(f"Error setting GitHub username for user {user_id}: {e}")
-        await update.message.reply_text(
-            "*burp* Что-то пошло не так при установке username. Попробуй ещё раз."
-        )
-
-
-async def daily_summary_on_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /daily_summary_on command - enable daily GitHub summary.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    db_manager = state_manager.db_manager
-
-    # Check if GitHub username is set
-    github_username = await db_manager.get_github_username(user_id)
-    if not github_username:
-        message = """⚠️ **GitHub username не установлен!**
-
-*urp* Сначала нужно указать свой GitHub username:
-`/set_github_username <твой_username>`
-
-Например: `/set_github_username octocat`"""
-        await update.message.reply_text(message)
-        return
-
-    # Enable daily summary
-    await db_manager.set_daily_summary_enabled(user_id, True)
-    logger.info(f"User {user_id} enabled daily GitHub summary")
-
-    message = f"""✅ **Ежедневное саммари GitHub включено!**
-
-*burp* Теперь каждый день в **09:00 МСК** я буду отправлять тебе краткое саммари 
-твоей активности в GitHub (@{github_username}) за предыдущий день.
-
-📊 Включает:
-• Количество коммитов
-• Pull requests
-• Issues
-• Комментарии
-• Другую активность
-
-Можешь протестировать саммари прямо сейчас:
-`/test_daily_summary`
-
-Чтобы выключить: `/daily_summary_off`"""
-
-    await update.message.reply_text(message)
-
-
-async def daily_summary_off_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /daily_summary_off command - disable daily GitHub summary.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    state_manager = context.bot_data["state_manager"]
-    db_manager = state_manager.db_manager
-
-    # Disable daily summary
-    await db_manager.set_daily_summary_enabled(user_id, False)
-    logger.info(f"User {user_id} disabled daily GitHub summary")
-
-    message = """🚫 **Ежедневное саммари GitHub выключено**
-
-*urp* Больше не буду отправлять тебе ежедневные саммари.
-
-Чтобы снова включить: `/daily_summary_on`"""
-
-    await update.message.reply_text(message)
-
-
-async def test_daily_summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /test_daily_summary command - test daily summary generation.
-
-    Args:
-        update: Telegram update object
-        context: Bot context
-    """
-    user_id = update.effective_user.id
-    logger.info(f"User {user_id} requested test daily summary")
-
-    # Get daily summary manager from bot_data
-    daily_summary_manager = context.bot_data.get("daily_summary_manager")
-
-    if not daily_summary_manager:
-        await update.message.reply_text(
-            "*burp* Саммари менеджер не инициализирован. Попробуй перезапустить бота."
-        )
-        return
-
-    # Show typing indicator
-    await update.message.chat.send_action(ChatAction.TYPING)
-
-    # Send test summary
-    await update.message.reply_text(
-        "🧪 *urp* Генерирую тестовое саммари... Подожди пару секунд..."
-    )
-
-    success = await daily_summary_manager.send_daily_summary_to_user(user_id)
-
-    if not success:
-        # Error message already sent by send_daily_summary_to_user
-        logger.warning(f"Failed to send test summary to user {user_id}")
-    else:
-        logger.info(f"Successfully sent test summary to user {user_id}")
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

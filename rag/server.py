@@ -102,8 +102,8 @@ def _embed_query(query: str) -> np.ndarray:
 
 TOOLS = [
     Tool(
-        name="search_code",
-        description="Vector search in code chunks. Returns top matches code docs chunks.",
+        name="search_project_documentation",
+        description="Vector search in project documentation. Can be used to find information about tech solutions, implementation details, etc.",
         inputSchema={
             "type": "object",
             "properties": {
@@ -170,7 +170,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     logger.debug("Arguments: %s", arguments)
 
     try:
-        if name == "search_code":
+        if name == "search_project_documentation":
             query = arguments.get("query")
             if not isinstance(query, str) or not query.strip():
                 raise ValueError("Field 'query' must be a non-empty string")
