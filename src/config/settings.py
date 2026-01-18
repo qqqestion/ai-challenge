@@ -133,3 +133,33 @@ def get_settings() -> Settings:
     """
     return Settings()
 
+
+class YandexCloudSettings(BaseSettings):
+    """Yandex Cloud settings loaded from environment variables.
+
+    This is intentionally separate from `Settings` so standalone scripts (e.g. `yandex_cloud.py`)
+    can run without requiring Telegram/Eliza-related env vars.
+    """
+
+    yandex_api_key: str = Field(
+        ...,
+        description="Yandex Cloud API key for OpenAI-compatible endpoint",
+    )
+    yandex_folder_id: str = Field(
+        ...,
+        description="Yandex Cloud folder id used in gpt://{folder}/... model URIs",
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+
+@lru_cache()
+def get_yandex_cloud_settings() -> YandexCloudSettings:
+    """Get cached Yandex Cloud settings instance."""
+    return YandexCloudSettings()
+

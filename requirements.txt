@@ -33,3 +33,5 @@ faiss-cpu>=1.8.0
 tiktoken>=0.7.0
 numpy>=1.26.0
 
+# Yandex Cloud
+openai>=1.0.0
