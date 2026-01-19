@@ -73,10 +73,7 @@ async def initialize_application():
 
     # Initialize MCP managers (optional)
     mcp_managers: list[MCPManager] = []
-    git_mcp_manager: MCPManager | None = None
-    github_mcp_manager: MCPManager | None = None
-    rag_mcp_manager: MCPManager | None = None
-    tracker_mcp_manager: MCPManager | None = None
+    ci_release_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
         try:
@@ -101,45 +98,12 @@ async def initialize_application():
 
     if settings.mcp_enabled:
         base_dir = Path(__file__).resolve().parent.parent
-        git_path = base_dir / "git_mcp" / "server.py"
-        github_path = base_dir / "github_mcp" / "server.py"
-        rag_path = base_dir / "rag" / "server.py"
-        tracker_command = (
-            "/Users/vchslv-mrzv/mapiArcadia/ml/infra/model_context_protocol/tools/proxy_client/proxy_client"
-        )
-        tracker_args = [
-            "-F",
-            "/Users/vchslv-mrzv/.mcp_store/oauth_token",
-            "--endpoint",
-            "mcp.yandex.net/ws?servers=tracker_mcp",
-        ]
+        ci_release_path = base_dir / "ci_release_mcp" / "server.py"
 
-        # git_mcp_manager = await _init_manager(git_path, "git_mcp")
-        # github_mcp_manager = await _init_manager(github_path, "github_mcp")
-        rag_mcp_manager = await _init_manager(rag_path, "rag_mcp")
-        try:
-            logger.info("Initializing MCP manager: tracker_mcp")
-            tracker_manager = MCPManager(
-                server_command=tracker_command,
-                server_args=tracker_args,
-            )
-            if await tracker_manager.initialize():
-                logger.info("✓ MCP manager initialized: tracker_mcp")
-                tracker_mcp_manager = tracker_manager
-            else:
-                logger.warning("⚠ MCP manager initialization failed: tracker_mcp")
-        except asyncio.TimeoutError:
-            logger.warning("⚠ MCP manager initialization timed out: tracker_mcp")
-        except Exception as init_error:
-            logger.warning(
-                "⚠ MCP manager initialization error (tracker_mcp): %s", init_error
-            )
+        ci_release_mcp_manager = await _init_manager(ci_release_path, "ci_release_mcp")
 
         for manager in (
-            # git_mcp_manager,
-            # github_mcp_manager,
-            rag_mcp_manager,
-            tracker_mcp_manager,
+            ci_release_mcp_manager,
         ):
             if manager:
                 mcp_managers.append(manager)
