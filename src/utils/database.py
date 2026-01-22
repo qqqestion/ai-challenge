@@ -15,7 +15,6 @@ logger = get_logger(__name__)
 class UserSettings:
     """User settings data structure."""
     user_id: int
-    model: str = 'gpt-4o-mini'
     temperature: float = 0.3
     summarization_enabled: bool = True
     rag_enabled: bool = True
@@ -223,7 +222,7 @@ class DatabaseManager:
             UserSettings object
         """
         cursor = self._execute_query(
-            """SELECT model, temperature, summarization_enabled, 
+            """SELECT temperature, summarization_enabled, 
                       rag_enabled, rag_filter_enabled, rag_similarity_threshold,
                       github_username, daily_summary_enabled, daily_summary_time, timezone 
                FROM user_settings WHERE user_id = ?""",
@@ -234,7 +233,6 @@ class DatabaseManager:
         if row:
             return UserSettings(
                 user_id=user_id,
-                model=row['model'],
                 temperature=row['temperature'],
                 summarization_enabled=bool(row['summarization_enabled']),
                 rag_enabled=bool(row['rag_enabled']),
@@ -258,13 +256,12 @@ class DatabaseManager:
         """
         self._execute_query(
             """INSERT OR REPLACE INTO user_settings
-               (user_id, model, temperature, summarization_enabled, rag_enabled,
+               (user_id, temperature, summarization_enabled, rag_enabled,
                 rag_filter_enabled, rag_similarity_threshold, github_username,
                 daily_summary_enabled, daily_summary_time, timezone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 settings.user_id,
-                settings.model,
                 settings.temperature,
                 settings.summarization_enabled,
                 settings.rag_enabled,

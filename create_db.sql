@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- User settings table: Stores user LLM preferences (1:1 with users)
 CREATE TABLE IF NOT EXISTS user_settings (
     user_id INTEGER PRIMARY KEY,
-    model VARCHAR(50) NOT NULL DEFAULT 'gpt-4o-mini',
+    model VARCHAR(50) NOT NULL DEFAULT 'gpt-oss:20b',
     temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature >= 0.0 AND temperature <= 2.0),
     summarization_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     rag_enabled BOOLEAN NOT NULL DEFAULT TRUE,

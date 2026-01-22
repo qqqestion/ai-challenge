@@ -14,14 +14,10 @@ class Settings(BaseSettings):
         description="Telegram Bot Token from @BotFather"
     )
 
-    # Eliza REST API Configuration
-    eliza_token: str = Field(
-        ...,
-        description="OAuth token for Eliza OpenAI-compatible API"
-    )
+    # Ollama Configuration
     llm_base_url: str = Field(
-        ...,
-        description="Base URL for Eliza REST API (host only, endpoint is derived by model)"
+        default="http://localhost:11434/v1",
+        description="Base URL for Ollama OpenAI-compatible API (default: http://localhost:11434/v1)"
     )
 
     # LLM Settings
@@ -63,12 +59,6 @@ class Settings(BaseSettings):
         description="Verify SSL certificates for Telegram API requests"
     )
     
-    # MCP Settings
-    mcp_enabled: bool = Field(
-        default=True,
-        description="Enable MCP (Model Context Protocol) tools integration"
-    )
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -110,17 +100,6 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level must be one of {valid_levels}")
         return v_upper
     
-    @validator("eliza_token")
-    def validate_eliza_token(cls, v: str) -> str:
-        """Validate Eliza token presence."""
-        if not v or v == "your_eliza_token_here":
-            raise ValueError(
-                "ELIZA_TOKEN не указан или содержит значение по умолчанию. "
-                "Получите токен доступа и укажите его в .env файле."
-            )
-        return v
-
-
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance.

@@ -1,53 +1,50 @@
-"""Eliza REST LLM API client."""
+"""Local Ollama LLM client (OpenAI-compatible API)."""
 
-from typing import List, Dict, Optional, Any, Union
+from typing import Any, Dict, List, Optional
 
 import httpx
 
 from ..config import get_logger
-from .models import ModelName, get_model_endpoint
 
 logger = get_logger(__name__)
 
 
 class YandexLLMClient:
-    """Client for Eliza OpenAI-compatible REST API."""
+    """Client for local Ollama OpenAI-compatible REST API."""
+
+    DEFAULT_MODEL = "gpt-oss:20b"
+    DEFAULT_BASE_URL = "http://localhost:11434/v1"
     
     def __init__(
         self,
-        api_key: str,
-        base_url: str,
+        base_url: str = DEFAULT_BASE_URL,
         temperature: float = 0.8,
-        model_name: Union[str, ModelName] = ModelName.GPT_4_O_MINI,
         max_tokens: int = 2000,
         timeout: float = 60.0,
-        ssl_verify: bool = False,
-        external_model_endpoints: Optional[Dict[str, str]] = None,
+        ssl_verify: bool = True,
     ):
-        """Initialize Eliza LLM client.
+        """Initialize local Ollama LLM client.
         
         Args:
-            api_key: Eliza OAuth token
-            base_url: REST API base URL (host, without model-specific path)
-            model_name: Model name (default: gpt-4o-mini)
+            base_url: Ollama OpenAI API base URL (default: http://localhost:11434/v1)
             temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Maximum tokens in response
             timeout: Request timeout in seconds
-            ssl_verify: Verify SSL certificates (False for self-signed certs)
-            external_model_endpoints: Mapping for non-enum models to endpoints
+            ssl_verify: Verify SSL certificates (only relevant for HTTPS base_url)
         """
-        self.api_key = api_key
-        self.model_name = (
-            model_name.value if isinstance(model_name, ModelName) else str(model_name)
-        )
         self.base_url = base_url.rstrip("/")
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.ssl_verify = ssl_verify
-        self.external_model_endpoints = external_model_endpoints
+        self.model_name = self.DEFAULT_MODEL
         
-        logger.info(f"YandexLLMClient initialized with model: {model_name}, temperature: {temperature}")
+        logger.info(
+            "YandexLLMClient initialized for Ollama with model: %s, base_url: %s, temperature: %s",
+            self.model_name,
+            self.base_url,
+            temperature,
+        )
         
         if not self.ssl_verify:
             logger.warning("=" * 60)
@@ -58,33 +55,27 @@ class YandexLLMClient:
             logger.warning("=" * 60)
         
         # Initialize async HTTP client
-        logger.debug("Initializing HTTP client for Eliza REST API")
+        logger.debug("Initializing HTTP client for Ollama OpenAI API")
         self.client = httpx.AsyncClient(
+            base_url=self.base_url,
             timeout=self.timeout,
             verify=self.ssl_verify
         )
 
-    @staticmethod
-    def _is_claude_model(model_name: str) -> bool:
-        """Detect Claude/Anthropic models by name."""
-        return "claude" in model_name.lower()
-    
     async def send_prompt(
         self,
         messages: List[Dict[str, str]],
         temperature: float,
         max_tokens: Optional[int] = None,
-        model: Optional[Union[str, ModelName]] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: str = "auto",
     ) -> Dict:
-        """Send prompt to Eliza REST API.
+        """Send prompt to local Ollama OpenAI-compatible REST API.
         
         Args:
             messages: List of message dictionaries with 'role' and 'content' keys
             temperature: Sampling temperature (0.0-2.0) - REQUIRED
             max_tokens: Override default max_tokens
-            model: Override model for this request
             tools: List of tools in OpenAI function calling format (optional)
             tool_choice: Tool choice strategy - "auto", "none", or specific tool (default: "auto")
             
@@ -94,16 +85,17 @@ class YandexLLMClient:
         Raises:
             Exception: If API request fails
         """
-        logger.info(f"Sending request to Eliza REST API: {len(messages)} messages, temperature: {temperature}")
-        
-        selected_model = (
-            model.value if isinstance(model, ModelName) else model
-        ) or self.model_name
+        logger.info(
+            "Sending request to Ollama OpenAI API: %s messages, temperature: %s",
+            len(messages),
+            temperature,
+        )
 
         payload: Dict[str, Any] = {
-            "model": selected_model,
+            "model": self.model_name,
             "temperature": temperature,
             "max_tokens": max_tokens or self.max_tokens,
+            "messages": messages,
         }
 
         # Add tools if provided
@@ -112,50 +104,27 @@ class YandexLLMClient:
             payload["tool_choice"] = tool_choice
             logger.debug(f"Added {len(tools)} tools to API request with tool_choice={tool_choice}")
 
-        if self._is_claude_model(selected_model):
-            # Claude expects system prompt in top-level "system" field, not as a message
-            system_prompt: Optional[str] = None
-            stripped_messages: List[Dict[str, str]] = []
-
-            for message in messages:
-                if message.get("role") == "system":
-                    content = message.get("content")
-                    if content:
-                        system_prompt = f"{system_prompt}\n\n{content}" if system_prompt else content
-                    continue
-                stripped_messages.append(message)
-
-            payload["messages"] = stripped_messages
-            if system_prompt:
-                payload["system"] = system_prompt
-        else:
-            payload["messages"] = messages
-
-        headers = {
-            "Authorization": f"OAuth {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        endpoint = get_model_endpoint(selected_model, self.external_model_endpoints)
-        url = f"{self.base_url}{endpoint}"
-
         try:
             response = await self.client.post(
-                url,
+                "/chat/completions",
                 json=payload,
-                headers=headers
             )
             response.raise_for_status()
 
-            logger.debug("Received response from Eliza REST API")
+            logger.debug("Received response from Ollama OpenAI API")
             return response.json()
 
         except httpx.HTTPStatusError as e:
             body = e.response.text if e.response else "no response body"
-            logger.error(f"Eliza API returned HTTP error: {e.response.status_code if e.response else 'unknown'} - {body}", exc_info=True)
+            logger.error(
+                "Ollama API returned HTTP error: %s - %s",
+                e.response.status_code if e.response else "unknown",
+                body,
+                exc_info=True,
+            )
             raise
         except Exception as e:
-            logger.error(f"Failed to get response from Eliza REST API: {e}", exc_info=True)
+            logger.error(f"Failed to get response from Ollama OpenAI API: {e}", exc_info=True)
             raise
     
     async def close(self):

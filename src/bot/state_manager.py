@@ -4,15 +4,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from ..llm.modes import RickMode
-from ..llm.models import ModelName
 from ..config import get_logger
-from ..utils.database import DatabaseManager, UserSettings, Message, UsageStats
+from ..utils.database import DatabaseManager, UserSettings, Message
 
 logger = get_logger(__name__)
 
 
 @dataclass
-class UsageStats:
+class RequestUsageStats:
     """Usage statistics for a single request."""
     input_tokens: int = 0
     output_tokens: int = 0
@@ -27,15 +26,11 @@ class UserState:
     user_id: int
     current_mode: RickMode = RickMode.NORMAL
     temperature: float = 0.3
-    model: ModelName = ModelName.GPT_4_O_MINI
     last_activity: datetime = field(default_factory=datetime.now)
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
-    usage_stats: List[UsageStats] = field(default_factory=list)
+    usage_stats: List[RequestUsageStats] = field(default_factory=list)
     summarization_enabled: bool = True
-    rag_enabled: bool = True
-    rag_filter_enabled: bool = False
-    rag_similarity_threshold: float = 0.3
-    summarization_stats: List[UsageStats] = field(default_factory=list)
+    summarization_stats: List[RequestUsageStats] = field(default_factory=list)
 
     # Database integration fields
     _settings_loaded: bool = field(default=False, init=False)
@@ -50,12 +45,8 @@ class UserState:
         if not self._settings_loaded and self._db_manager:
             try:
                 db_settings = await self._db_manager.get_user_settings(self.user_id)
-                self.model = ModelName(db_settings.model)
                 self.temperature = db_settings.temperature
                 self.summarization_enabled = db_settings.summarization_enabled
-                self.rag_enabled = db_settings.rag_enabled
-                self.rag_filter_enabled = db_settings.rag_filter_enabled
-                self.rag_similarity_threshold = db_settings.rag_similarity_threshold
                 self._settings_loaded = True
                 logger.debug(f"Loaded settings for user {self.user_id} from database")
             except Exception as e:
@@ -67,12 +58,8 @@ class UserState:
             try:
                 settings = UserSettings(
                     user_id=self.user_id,
-                    model=self.model.value,
                     temperature=self.temperature,
                     summarization_enabled=self.summarization_enabled,
-                    rag_enabled=self.rag_enabled,
-                    rag_filter_enabled=self.rag_filter_enabled,
-                    rag_similarity_threshold=self.rag_similarity_threshold
                 )
                 await self._db_manager.save_user_settings(settings)
                 logger.debug(f"Saved settings for user {self.user_id} to database")
@@ -136,7 +123,7 @@ class UserState:
             output_tokens: Number of output tokens used
             cost: Cost of the request
         """
-        self.usage_stats.append(UsageStats(
+        self.usage_stats.append(RequestUsageStats(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost
@@ -158,7 +145,7 @@ class UserState:
             output_tokens: Number of output tokens used
             cost: Cost of the summarization request
         """
-        self.summarization_stats.append(UsageStats(
+        self.summarization_stats.append(RequestUsageStats(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost=cost
@@ -282,82 +269,6 @@ class StateManager:
         """
         state = await self.get_user_state(user_id)
         return state.temperature
-
-    async def get_user_model(self, user_id: int) -> ModelName:
-        """Get current model for user."""
-        state = await self.get_user_state(user_id)
-        return state.model
-
-    async def set_user_model(self, user_id: int, model: ModelName):
-        """Set model for user."""
-        state = await self.get_user_state(user_id)
-        old_model = state.model
-        state.model = model
-        # Clear history when changing model
-        await state.clear_history()
-        # Save settings to database
-        await state.save_settings()
-        logger.info(f"User {user_id} model changed: {old_model} -> {model} (history cleared)")
-
-    async def get_user_rag_enabled(self, user_id: int) -> bool:
-        """Get RAG setting for user."""
-        state = await self.get_user_state(user_id)
-        return state.rag_enabled
-
-    async def set_user_rag_enabled(self, user_id: int, enabled: bool):
-        """Set RAG setting for user."""
-        state = await self.get_user_state(user_id)
-        old_enabled = state.rag_enabled
-        state.rag_enabled = enabled
-        await state.save_settings()
-        logger.info(f"User {user_id} RAG changed: {old_enabled} -> {enabled}")
-
-    async def get_user_rag_filter_enabled(self, user_id: int) -> bool:
-        """Get RAG similarity filter flag for user."""
-        state = await self.get_user_state(user_id)
-        return state.rag_filter_enabled
-
-    async def get_user_rag_similarity_threshold(self, user_id: int) -> float:
-        """Get RAG similarity threshold for user."""
-        state = await self.get_user_state(user_id)
-        return state.rag_similarity_threshold
-
-    async def set_user_rag_similarity_threshold(self, user_id: int, threshold: float):
-        """Set RAG similarity threshold for user (0.0 - 10.0)."""
-        if not (0.0 <= threshold <= 10.0):
-            raise ValueError("RAG similarity threshold must be between 0.0 and 10.0")
-
-        state = await self.get_user_state(user_id)
-        old_threshold = state.rag_similarity_threshold
-        state.rag_similarity_threshold = threshold
-        await state.save_settings()
-        logger.info(f"User {user_id} RAG threshold changed: {old_threshold} -> {threshold}")
-
-    async def set_user_rag_filter_enabled(self, user_id: int, enabled: bool):
-        """Enable or disable RAG similarity filter."""
-        state = await self.get_user_state(user_id)
-        old_enabled = state.rag_filter_enabled
-        state.rag_filter_enabled = enabled
-        await state.save_settings()
-        logger.info(f"User {user_id} RAG filter changed: {old_enabled} -> {enabled}")
-
-    async def set_user_rag_filter(self, user_id: int, enabled: bool, threshold: Optional[float] = None):
-        """Set RAG filter flag and optionally threshold."""
-        state = await self.get_user_state(user_id)
-
-        if threshold is not None:
-            if not (0.0 <= threshold <= 10.0):
-                raise ValueError("RAG similarity threshold must be between 0.0 and 10.0")
-            state.rag_similarity_threshold = threshold
-
-        state.rag_filter_enabled = enabled
-        await state.save_settings()
-        logger.info(
-            "User %s RAG filter updated: enabled=%s, threshold=%s",
-            user_id,
-            enabled,
-            state.rag_similarity_threshold,
-        )
 
     async def set_user_temperature(self, user_id: int, temperature: float):
         """Set temperature for user.
