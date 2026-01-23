@@ -13,6 +13,9 @@ from .handlers import (
     help_command,
     reset_command,
     temperature_command,
+    max_tokens_command,
+    context_command,
+    llm_settings_command,
     stats_command,
     handle_message,
     error_handler
@@ -68,6 +71,9 @@ class RickBot:
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("reset", reset_command))
         app.add_handler(CommandHandler("temperature", temperature_command))
+        app.add_handler(CommandHandler("max_tokens", max_tokens_command))
+        app.add_handler(CommandHandler("context", context_command))
+        app.add_handler(CommandHandler("llm_settings", llm_settings_command))
         app.add_handler(CommandHandler("stats", stats_command))
         
         # Message handler (for non-command messages)
@@ -90,6 +96,9 @@ class RickBot:
         commands = [ 
             BotCommand("help", "Подробная справка"),
             BotCommand("temperature", "Настройка температуры"), 
+            BotCommand("max_tokens", "Лимит токенов в ответе"),
+            BotCommand("context", "Размер контекстного окна (или auto)"),
+            BotCommand("llm_settings", "Показать настройки LLM"),
             BotCommand("reset", "Очистить историю"),
             BotCommand("stats", "Показать статистику использования"),
         ]

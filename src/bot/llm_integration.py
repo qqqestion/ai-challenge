@@ -52,8 +52,16 @@ class LLMIntegration:
         # Get user state and temperature (async)
         user_state = await self.state_manager.get_user_state(user_id)
         user_temperature = user_state.temperature
+        user_max_tokens = user_state.max_tokens
+        user_num_ctx = user_state.num_ctx
 
-        logger.info(f"Processing message for user {user_id} with temperature {user_temperature}")
+        logger.info(
+            "Processing message for user %s with temperature=%s max_tokens=%s num_ctx=%s",
+            user_id,
+            user_temperature,
+            user_max_tokens,
+            user_num_ctx,
+        )
 
         # Check if summarization is needed
         await self._check_and_perform_summarization(user_id, user_state)
@@ -73,6 +81,8 @@ class LLMIntegration:
             response = await self.llm_client.send_prompt(
                 messages,
                 temperature=user_temperature,
+                max_tokens=user_max_tokens,
+                num_ctx=user_num_ctx,
                 tools=None,
                 tool_choice="none",
             )
@@ -103,7 +113,7 @@ class LLMIntegration:
                 formatted_response = "Извините, я получил пустой ответ. Попробуйте еще раз."
 
             metadata_block = (
-                self._format_metadata(metadata, self.llm_client.max_tokens)
+                self._format_metadata(metadata, user_max_tokens)
                 if metadata
                 else None
             )

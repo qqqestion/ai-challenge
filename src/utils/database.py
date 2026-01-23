@@ -16,6 +16,8 @@ class UserSettings:
     """User settings data structure."""
     user_id: int
     temperature: float = 0.3
+    max_tokens: int = 2000
+    num_ctx: Optional[int] = None
     summarization_enabled: bool = True
     rag_enabled: bool = True
     rag_filter_enabled: bool = False
@@ -160,6 +162,18 @@ class DatabaseManager:
             # Add rag_enabled to user_settings if missing
             columns = self._connection.execute("PRAGMA table_info(user_settings)").fetchall()
             column_names = {col["name"] for col in columns}
+            if "max_tokens" not in column_names:
+                logger.info("Adding missing column user_settings.max_tokens")
+                self._connection.execute(
+                    "ALTER TABLE user_settings ADD COLUMN max_tokens INTEGER NOT NULL DEFAULT 2000"
+                )
+                self._connection.commit()
+            if "num_ctx" not in column_names:
+                logger.info("Adding missing column user_settings.num_ctx")
+                self._connection.execute(
+                    "ALTER TABLE user_settings ADD COLUMN num_ctx INTEGER DEFAULT NULL"
+                )
+                self._connection.commit()
             if "rag_enabled" not in column_names:
                 logger.info("Adding missing column user_settings.rag_enabled")
                 self._connection.execute(
@@ -222,7 +236,7 @@ class DatabaseManager:
             UserSettings object
         """
         cursor = self._execute_query(
-            """SELECT temperature, summarization_enabled, 
+            """SELECT temperature, max_tokens, num_ctx, summarization_enabled,
                       rag_enabled, rag_filter_enabled, rag_similarity_threshold,
                       github_username, daily_summary_enabled, daily_summary_time, timezone 
                FROM user_settings WHERE user_id = ?""",
@@ -234,6 +248,8 @@ class DatabaseManager:
             return UserSettings(
                 user_id=user_id,
                 temperature=row['temperature'],
+                max_tokens=row["max_tokens"],
+                num_ctx=row["num_ctx"],
                 summarization_enabled=bool(row['summarization_enabled']),
                 rag_enabled=bool(row['rag_enabled']),
                 rag_filter_enabled=bool(row['rag_filter_enabled']),
@@ -256,13 +272,15 @@ class DatabaseManager:
         """
         self._execute_query(
             """INSERT OR REPLACE INTO user_settings
-               (user_id, temperature, summarization_enabled, rag_enabled,
+               (user_id, temperature, max_tokens, num_ctx, summarization_enabled, rag_enabled,
                 rag_filter_enabled, rag_similarity_threshold, github_username,
                 daily_summary_enabled, daily_summary_time, timezone)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 settings.user_id,
                 settings.temperature,
+                settings.max_tokens,
+                settings.num_ctx,
                 settings.summarization_enabled,
                 settings.rag_enabled,
                 settings.rag_filter_enabled,

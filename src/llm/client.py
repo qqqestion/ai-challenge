@@ -67,6 +67,7 @@ class YandexLLMClient:
         messages: List[Dict[str, str]],
         temperature: float,
         max_tokens: Optional[int] = None,
+        num_ctx: Optional[int] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
         tool_choice: str = "auto",
     ) -> Dict:
@@ -97,6 +98,10 @@ class YandexLLMClient:
             "max_tokens": max_tokens or self.max_tokens,
             "messages": messages,
         }
+
+        # Ollama-specific options for OpenAI-compatible API (optional)
+        if num_ctx is not None:
+            payload["options"] = {"num_ctx": num_ctx}
 
         # Add tools if provided
         if tools:

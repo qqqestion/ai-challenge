@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
     user_id INTEGER PRIMARY KEY,
     model VARCHAR(50) NOT NULL DEFAULT 'gpt-oss:20b',
     temperature REAL NOT NULL DEFAULT 0.3 CHECK (temperature >= 0.0 AND temperature <= 2.0),
+    max_tokens INTEGER NOT NULL DEFAULT 2000 CHECK (max_tokens > 0),
+    num_ctx INTEGER DEFAULT NULL CHECK (num_ctx IS NULL OR num_ctx > 0),
     summarization_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     rag_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     rag_filter_enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -67,3 +69,4 @@ CREATE INDEX idx_messages_user_created ON messages(user_id, created_at);
 
 -- Insert initial schema version
 INSERT INTO schema_versions (version, description) VALUES (1, 'Revised schema: separated user settings, 1:1 usage stats, removed current_mode');
+INSERT INTO schema_versions (version, description) VALUES (2, 'Added per-user LLM settings: max_tokens and num_ctx (context window)');

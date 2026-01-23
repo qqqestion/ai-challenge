@@ -1,7 +1,5 @@
 """Telegram bot command and message handlers."""
 
-from typing import Any, List
-
 from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import ContextTypes
@@ -29,6 +27,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🌡️ **Температура:**
 /temperature — показать текущую температуру
 /temperature <0.0-2.0> — установить температуру ответов
+
+🧠 **Контекст (Ollama):**
+/context — показать текущий размер контекста (или auto)
+/context <число> — установить num_ctx (размер контекстного окна)
+/context auto — вернуть в auto (по умолчанию)
+
+✂️ **Лимит ответа (Ollama):**
+/max_tokens — показать текущий лимит
+/max_tokens <число> — установить max_tokens
+
+📌 **Текущие настройки:**
+/llm_settings — показать все параметры модели
 
 ⚙️ **Прочее:**
 /reset — очистить историю разговора
@@ -135,6 +145,119 @@ async def temperature_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 /temperature 2.0"""
 
         await update.message.reply_text(error_message)
+
+
+async def max_tokens_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /max_tokens command - set max_tokens for user (normal responses only)."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    if not context.args:
+        current_value = await state_manager.get_user_max_tokens(user_id)
+        message = f"""✂️ **Текущий max_tokens:** {current_value}
+
+Используй: `/max_tokens <число>` чтобы изменить
+Например: `/max_tokens 512`"""
+        await update.message.reply_text(message)
+        return
+
+    try:
+        value = int(context.args[0])
+        if value <= 0:
+            await update.message.reply_text("*urp* max_tokens должен быть > 0!")
+            return
+
+        old_value = await state_manager.get_user_max_tokens(user_id)
+        await state_manager.set_user_max_tokens(user_id, value)
+
+        await update.message.reply_text(
+            f"✂️ **max_tokens установлен:** {value}\n\n"
+            f"Старое значение: {old_value}\n"
+            f"Новое значение: {value}\n\n"
+            "Используй `/max_tokens` без параметров чтобы посмотреть текущее значение."
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "*burp* Неверный формат!\n\n"
+            "Используй: `/max_tokens <целое число>`\n"
+            "Например: `/max_tokens 512`"
+        )
+
+
+async def context_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /context command - set num_ctx (context window) for user (normal responses only)."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    if not context.args:
+        current_value = await state_manager.get_user_num_ctx(user_id)
+        current_display = "auto" if current_value is None else str(current_value)
+        message = f"""🧠 **Текущий контекст (num_ctx):** {current_display}
+
+Используй:
+`/context <число>` чтобы изменить
+`/context auto` чтобы вернуть в auto (по умолчанию)
+
+Например: `/context 8192`"""
+        await update.message.reply_text(message)
+        return
+
+    arg = context.args[0].strip().lower()
+    if arg in {"auto", "default"}:
+        old_value = await state_manager.get_user_num_ctx(user_id)
+        await state_manager.set_user_num_ctx(user_id, None)
+        old_display = "auto" if old_value is None else str(old_value)
+        await update.message.reply_text(
+            "🧠 **Контекст сброшен в auto**\n\n"
+            f"Старое значение: {old_display}\n"
+            "Новое значение: auto"
+        )
+        return
+
+    try:
+        value = int(arg)
+        if value <= 0:
+            await update.message.reply_text("*urp* num_ctx должен быть > 0 (или используй `auto`)!")
+            return
+
+        old_value = await state_manager.get_user_num_ctx(user_id)
+        await state_manager.set_user_num_ctx(user_id, value)
+        old_display = "auto" if old_value is None else str(old_value)
+        await update.message.reply_text(
+            f"🧠 **num_ctx установлен:** {value}\n\n"
+            f"Старое значение: {old_display}\n"
+            f"Новое значение: {value}\n\n"
+            "Используй `/context` без параметров чтобы посмотреть текущее значение."
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "*burp* Неверный формат!\n\n"
+            "Используй:\n"
+            "`/context <целое число>` или `/context auto`\n"
+            "Например: `/context 8192`"
+        )
+
+
+async def llm_settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /llm_settings command - show current per-user LLM settings."""
+    user_id = update.effective_user.id
+    state_manager = context.bot_data["state_manager"]
+
+    state = await state_manager.get_user_state(user_id)
+    num_ctx_display = "auto" if state.num_ctx is None else str(state.num_ctx)
+
+    message = (
+        "📌 **Твои настройки LLM (только обычные ответы):**\n\n"
+        f"🌡️ temperature = {state.temperature}\n"
+        f"✂️ max_tokens = {state.max_tokens}\n"
+        f"🧠 num_ctx = {num_ctx_display}\n\n"
+        "Команды:\n"
+        "- `/temperature <0.0-2.0>`\n"
+        "- `/max_tokens <число>`\n"
+        "- `/context <число|auto>`"
+    )
+
+    await update.message.reply_text(message)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

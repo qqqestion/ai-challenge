@@ -26,6 +26,8 @@ class UserState:
     user_id: int
     current_mode: RickMode = RickMode.NORMAL
     temperature: float = 0.3
+    max_tokens: int = 2000
+    num_ctx: Optional[int] = None
     last_activity: datetime = field(default_factory=datetime.now)
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     usage_stats: List[RequestUsageStats] = field(default_factory=list)
@@ -46,6 +48,8 @@ class UserState:
             try:
                 db_settings = await self._db_manager.get_user_settings(self.user_id)
                 self.temperature = db_settings.temperature
+                self.max_tokens = db_settings.max_tokens
+                self.num_ctx = db_settings.num_ctx
                 self.summarization_enabled = db_settings.summarization_enabled
                 self._settings_loaded = True
                 logger.debug(f"Loaded settings for user {self.user_id} from database")
@@ -59,6 +63,8 @@ class UserState:
                 settings = UserSettings(
                     user_id=self.user_id,
                     temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                    num_ctx=self.num_ctx,
                     summarization_enabled=self.summarization_enabled,
                 )
                 await self._db_manager.save_user_settings(settings)
@@ -287,6 +293,53 @@ class StateManager:
         await state.save_settings()
         logger.info(f"User {user_id} temperature changed: {old_temperature} -> {temperature}")
 
+    async def get_user_max_tokens(self, user_id: int) -> int:
+        """Get current max_tokens setting for user."""
+        state = await self.get_user_state(user_id)
+        return state.max_tokens
+
+    async def set_user_max_tokens(self, user_id: int, max_tokens: int):
+        """Set max_tokens for user.
+
+        Args:
+            user_id: Telegram user ID
+            max_tokens: Maximum tokens in response (must be > 0)
+        """
+        if max_tokens <= 0:
+            raise ValueError("max_tokens must be greater than 0")
+        if max_tokens > 200000:
+            raise ValueError("max_tokens is too large")
+
+        state = await self.get_user_state(user_id)
+        old_value = state.max_tokens
+        state.max_tokens = max_tokens
+        await state.save_settings()
+        logger.info(f"User {user_id} max_tokens changed: {old_value} -> {max_tokens}")
+
+    async def get_user_num_ctx(self, user_id: int) -> Optional[int]:
+        """Get current num_ctx setting for user (None means auto)."""
+        state = await self.get_user_state(user_id)
+        return state.num_ctx
+
+    async def set_user_num_ctx(self, user_id: int, num_ctx: Optional[int]):
+        """Set num_ctx (context window) for user.
+
+        Args:
+            user_id: Telegram user ID
+            num_ctx: Context window size; None means auto/default
+        """
+        if num_ctx is not None:
+            if num_ctx <= 0:
+                raise ValueError("num_ctx must be greater than 0")
+            if num_ctx > 200000:
+                raise ValueError("num_ctx is too large")
+
+        state = await self.get_user_state(user_id)
+        old_value = state.num_ctx
+        state.num_ctx = num_ctx
+        await state.save_settings()
+        logger.info(f"User {user_id} num_ctx changed: {old_value} -> {num_ctx}")
+
     async def get_user_summarization_enabled(self, user_id: int) -> bool:
         """Get summarization setting for user.
 
@@ -334,6 +387,9 @@ class StateManager:
             self._states[user_id] = UserState(user_id=user_id)
             if self.db_manager:
                 self._states[user_id].set_db_manager(self.db_manager)
+                # Keep user settings (temperature/max_tokens/num_ctx/etc.) after reset
+                await self.db_manager.get_or_create_user(user_id)
+                await self._states[user_id].ensure_settings_loaded()
         else:
             logger.debug(f"No in-memory state to reset for user {user_id}")
 
