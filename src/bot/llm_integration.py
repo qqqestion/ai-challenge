@@ -127,7 +127,7 @@ class LLMIntegration:
         # Send to LLM API with user-specific temperature
         try:
             # Tool calling loop (max 3 iterations)
-            max_iterations = 5
+            max_iterations = 20
             tool_call_history = []
 
             for iteration in range(max_iterations):

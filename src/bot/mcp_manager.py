@@ -41,6 +41,7 @@ class MCPManager:
             "rag_mcp": base_dir / "rag" / "server.py",
             "android_mcp": base_dir / "android_mcp" / "server.py",
             "ci_release_mcp": base_dir / "ci_release_mcp" / "server.py",
+            "analytics_mcp": base_dir / "analytics_mcp" / "server.py",
         }
 
         resolved_server_script_path: Optional[str] = server_script_path
