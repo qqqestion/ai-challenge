@@ -13,7 +13,6 @@ from .handlers import (
     help_command,
     reset_command,
     temperature_command,
-    review_command,
     stats_command,
     handle_message,
     error_handler
@@ -69,9 +68,7 @@ class RickBot:
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("reset", reset_command))
         app.add_handler(CommandHandler("temperature", temperature_command))
-        app.add_handler(CommandHandler("stats", stats_command))
-        app.add_handler(CommandHandler("review", review_command))
-        
+        app.add_handler(CommandHandler("stats", stats_command))        
         # Message handler (for non-command messages)
         app.add_handler(
             MessageHandler(
@@ -94,7 +91,6 @@ class RickBot:
             BotCommand("temperature", "Настройка температуры"), 
             BotCommand("reset", "Очистить историю"),
             BotCommand("stats", "Показать статистику использования"),
-            BotCommand("review", "Обзор PR по ссылке"),
         ]
         
         try:

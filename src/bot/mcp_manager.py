@@ -28,20 +28,14 @@ class MCPManager:
         """Initialize MCP Manager.
 
         Args:
-            server_name: Named MCP server shipped with this repository (e.g. "ci_release_mcp").
-            server_script_path: Path to MCP server script (default: github_mcp/server.py)
+            server_name: Named MCP server shipped with this repository (e.g. "diary_mcp").
+            server_script_path: Path to MCP server script (default: diary_mcp/server.py)
             server_command: Custom MCP server executable (non-Python servers)
             server_args: Arguments for the custom MCP server executable
         """
         base_dir = Path(__file__).resolve().parent.parent.parent
         known_servers = {
-            "github_mcp": base_dir / "github_mcp" / "server.py",
-            "git_mcp": base_dir / "git_mcp" / "server.py",
-            "report_mcp": base_dir / "report_mcp" / "server.py",
-            "rag_mcp": base_dir / "rag" / "server.py",
-            "android_mcp": base_dir / "android_mcp" / "server.py",
-            "ci_release_mcp": base_dir / "ci_release_mcp" / "server.py",
-            "analytics_mcp": base_dir / "analytics_mcp" / "server.py",
+            "diary_mcp": base_dir / "diary_mcp" / "server.py",
         }
 
         resolved_server_script_path: Optional[str] = server_script_path
@@ -52,7 +46,7 @@ class MCPManager:
             resolved_server_script_path = str(known_path)
 
         self.server_script_path = resolved_server_script_path or str(
-            base_dir / "github_mcp" / "server.py"
+            base_dir / "diary_mcp" / "server.py"
         )
         self.server_command = server_command
         self.server_args = server_args or []

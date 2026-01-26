@@ -73,8 +73,7 @@ async def initialize_application():
 
     # Initialize MCP managers (optional)
     mcp_managers: list[MCPManager] = []
-    ci_release_mcp_manager: MCPManager | None = None
-    analytics_mcp_manager: MCPManager | None = None
+    diary_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
         try:
@@ -99,15 +98,12 @@ async def initialize_application():
 
     if settings.mcp_enabled:
         base_dir = Path(__file__).resolve().parent.parent
-        ci_release_path = base_dir / "ci_release_mcp" / "server.py"
-        analytics_path = base_dir / "analytics_mcp" / "server.py"
+        diary_path = base_dir / "diary_mcp" / "server.py"
 
-        ci_release_mcp_manager = await _init_manager(ci_release_path, "ci_release_mcp")
-        analytics_mcp_manager = await _init_manager(analytics_path, "analytics_mcp")
+        diary_mcp_manager = await _init_manager(diary_path, "diary_mcp")
 
         for manager in (
-            ci_release_mcp_manager,
-            analytics_mcp_manager,
+            diary_mcp_manager,
         ):
             if manager:
                 mcp_managers.append(manager)
