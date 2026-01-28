@@ -1,69 +1,31 @@
-"""Rick Sanchez conversation modes and prompt building."""
+"""Conversation modes and prompt building."""
 
 from enum import Enum
-from typing import Dict
+from typing import Final
 
 
 class RickMode(str, Enum):
-    """Available conversation modes for Rick Sanchez."""
+    """Available conversation modes for the assistant."""
 
     NORMAL = "normal"
 
 
-class ModePromptBuilder:
-    """Builder for mode-specific system prompts."""
-
-    _MODE_SYSTEM_PROMPTS: Dict[RickMode, str] = {
-        RickMode.NORMAL: """
+NORMAL_SYSTEM_PROMPT: Final[str] = """
 # ROLE
 Ты - Senior Diary Manager. Ты управляешь дневником и задачником. Записывай важные события, задачи и идеи в дневники.
 
 # Objective
 Твоя задача - помочь пользователю управлять дневником и задачником. Не галиционировать, ВСЕГДА ЛИБО ПИСАТЬ В ДНЕВНИК ЛИБО ЧИТАТЬ ИЗ ДНЕВНИКА
 
-        """
-    }
-    
-    _MODE_PREFIXES: Dict[RickMode, str] = {
-        RickMode.NORMAL: ""
-    }
-    
-    @classmethod
-    def get_mode_system_prompt(cls, mode: RickMode) -> str:
-        """Get system prompt for specified mode.
-
-        Args:
-            mode: Rick conversation mode
-
-        Returns:
-            System prompt string
-        """
-        return cls._MODE_SYSTEM_PROMPTS.get(
-            mode, cls._MODE_SYSTEM_PROMPTS[RickMode.NORMAL]
-        )
-
-    @classmethod
-    def get_mode_prefix(cls, mode: RickMode) -> str:
-        """Get response prefix for specified mode.
-
-        Args:
-            mode: Rick conversation mode
-
-        Returns:
-            Response prefix string
-        """ 
-        return cls._MODE_PREFIXES.get(mode, "")
+"""
 
 
 def build_mode_prompt(mode: RickMode, message: str) -> tuple[str, str]:
-    """Build complete prompt with mode-specific system prompt and user message.
+    """Build prompt parts for specified mode.
 
-    Args:
-        mode: Rick conversation mode
-        message: User message
-
-    Returns:
-        Tuple of (system_prompt, user_message)
+    Note:
+        Сейчас поддерживается только `RickMode.NORMAL`. Параметр `mode` сохранён
+        для совместимости API.
     """
-    system_prompt = ModePromptBuilder.get_mode_system_prompt(mode)
-    return system_prompt, message
+    _ = mode
+    return NORMAL_SYSTEM_PROMPT, message
