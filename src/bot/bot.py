@@ -15,6 +15,7 @@ from .handlers import (
     temperature_command,
     stats_command,
     handle_message,
+    handle_voice_message,
     error_handler
 )
 
@@ -74,6 +75,14 @@ class RickBot:
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND,
                 handle_message
+            )
+        )
+
+        # Voice/audio handler
+        app.add_handler(
+            MessageHandler(
+                (filters.VOICE | filters.AUDIO) & ~filters.COMMAND,
+                handle_voice_message,
             )
         )
 

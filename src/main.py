@@ -3,14 +3,12 @@
 import asyncio
 import signal
 from pathlib import Path
-from datetime import time
 
 from .config import get_settings, setup_logger, get_logger
 from .llm import YandexLLMClient, ResponseProcessor
 from .bot import RickBot, StateManager
 from .bot.llm_integration import LLMIntegration
 from .bot.mcp_manager import MCPManager
-from .bot.daily_summary_manager import DailySummaryManager
 from .utils.database import DatabaseManager
 
 # Global references for cleanup
@@ -24,7 +22,7 @@ async def initialize_application():
     """Initialize all application components.
 
     Returns:
-        Tuple of (bot, llm_client, db_manager, mcp_managers, daily_summary_manager) instances
+        Tuple of (bot, llm_client, db_manager, mcp_managers) instances
     """
     # Load settings
     settings = get_settings()
@@ -129,14 +127,11 @@ async def initialize_application():
     )
     logger.info("✓ Bot initialized")
 
-    # DailySummaryManager requires GitHub MCP; skipped
-    daily_summary_manager = None
-
     logger.info("=" * 60)
     logger.info("Initialization complete!")
     logger.info("=" * 60)
 
-    return bot, llm_client, db_manager, mcp_managers, daily_summary_manager
+    return bot, llm_client, db_manager, mcp_managers
 
 
 async def cleanup_application(
@@ -144,7 +139,6 @@ async def cleanup_application(
     llm_client: YandexLLMClient,
     db_manager: DatabaseManager,
     mcp_managers: list[MCPManager] | None = None,
-    daily_summary_manager: DailySummaryManager = None,
 ):
     """Cleanup application resources.
 
@@ -153,7 +147,6 @@ async def cleanup_application(
         llm_client: LLM client instance
         db_manager: Database manager instance
         mcp_managers: MCP manager instances (optional)
-        daily_summary_manager: Daily summary manager instance (optional)
     """
     logger = get_logger()
     logger.info("=" * 60)
@@ -202,32 +195,11 @@ async def main():
 
     try:
         # Initialize
-        bot, llm_client, db_manager, mcp_managers, daily_summary_manager = await initialize_application()
+        bot, llm_client, db_manager, mcp_managers = await initialize_application()
         _bot_instance = bot
         _llm_client = llm_client
         _db_manager = db_manager
         _mcp_managers = mcp_managers
-
-        # Setup JobQueue for daily summaries
-        if daily_summary_manager:
-            logger.info("=" * 60)
-            logger.info("Setting up JobQueue for daily summaries")
-            logger.info("=" * 60)
-            
-            job_queue = bot.application.job_queue
-            
-            # Schedule daily summary at 06:00 UTC (09:00 MSK)
-            job_queue.run_daily(
-                daily_summary_manager.send_all_daily_summaries,
-                time=time(hour=6, minute=0, second=0),
-                days=(0, 1, 2, 3, 4, 5, 6),  # Every day
-                name='daily_github_summary'
-            )
-            
-            logger.info("✓ Daily summary job scheduled for 06:00 UTC (09:00 MSK)")
-            logger.info("=" * 60)
-        else:
-            logger.info("Daily summary job not scheduled (manager not initialized)")
 
         # Start bot
         await bot.start()
@@ -277,8 +249,9 @@ async def main():
     finally:
         # Cleanup
         if _bot_instance and _llm_client and _db_manager:
-            daily_summary_mgr = _bot_instance.application.bot_data.get("daily_summary_manager") if _bot_instance else None
-            await cleanup_application(_bot_instance, _llm_client, _db_manager, _mcp_managers, daily_summary_mgr)
+            await cleanup_application(
+                _bot_instance, _llm_client, _db_manager, _mcp_managers
+            )
 
 
 def run():

@@ -1,5 +1,7 @@
 """Message processing logic for bot responses."""
 
+from typing import Optional
+
 from telegram import Update
 from telegram.ext import ContextTypes
 from ..config import get_logger
@@ -7,15 +9,20 @@ from ..config import get_logger
 logger = get_logger(__name__)
 
 
-async def process_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_user_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    message_text_override: Optional[str] = None,
+):
     """Process user message and generate Rick's response.
     
     Args:
         update: Telegram update object
         context: Bot context
+        message_text_override: Optional message text override (e.g. STT result)
     """
     user_id = update.effective_user.id
-    message_text = update.message.text
+    message_text = message_text_override if message_text_override is not None else update.message.text
     
     # Get dependencies from context
     llm_integration = context.bot_data["llm_integration"]
@@ -89,19 +96,4 @@ def split_text_into_chunks(text: str, chunk_size: int) -> list:
         chunks.append(current_chunk.strip())
     
     return chunks
-
-
-def format_response_text(text: str, mode_prefix: str = "") -> str:
-    """Format response text with optional mode prefix.
-    
-    Args:
-        text: Response text
-        mode_prefix: Prefix to add (e.g., "[НАУЧНЫЙ РЕЖИМ]")
-        
-    Returns:
-        Formatted text
-    """
-    if mode_prefix:
-        return f"{mode_prefix}{text}"
-    return text
 

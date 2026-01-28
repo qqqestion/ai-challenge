@@ -1,8 +1,9 @@
 """Telegram bot command and message handlers."""
 
-import json
-import re
-from typing import Any, Dict, List, Tuple
+import asyncio
+import shutil
+import tempfile
+from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -11,11 +12,8 @@ from telegram.ext import ContextTypes
 from ..config import get_logger
 
 logger = get_logger(__name__)
-PR_URL_PATTERN = re.compile(
-    r"https?://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)",
-    re.IGNORECASE,
-)
-MAX_REVIEW_PROMPT_CHARS = 14000  # защитный лимит на вход в LLM
+
+WAV_SAMPLE_RATE_HZ = 16000
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,6 +175,139 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Попробуй ещё раз, или используй /reset если проблема повторяется."""
 
         await update.message.reply_text(error_message)
+
+
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle voice/audio messages by transcribing them and feeding to the LLM pipeline."""
+    user = update.effective_user
+    message = update.message
+
+    if not message:
+        return
+
+    voice = getattr(message, "voice", None)
+    audio = getattr(message, "audio", None)
+
+    if not voice and not audio:
+        return
+
+    file_id = None
+    input_name = "audio.bin"
+
+    if voice:
+        file_id = voice.file_id
+        input_name = "voice.ogg"
+    elif audio:
+        file_id = audio.file_id
+        input_name = audio.file_name or "audio.bin"
+
+    if not file_id:
+        await message.reply_text("*urp* Не вижу файл для распознавания.")
+        return
+
+    logger.info(
+        "Voice/audio message from user %s (%s): file=%s",
+        user.id,
+        user.username,
+        input_name,
+    )
+
+    # Show typing indicator while we process audio
+    await message.chat.send_action(ChatAction.TYPING)
+
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        await message.reply_text(
+            "*burp* На сервере нет `ffmpeg`, я не могу конвертировать аудио в WAV.\n\n"
+            "Поставь ffmpeg и попробуй снова."
+        )
+        return
+
+    from .speech_to_text import get_or_create_transcriber, SpeechToTextError
+    from .message_processor import process_user_message
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="rick_stt_") as tmpdir:
+            tmp_path = Path(tmpdir)
+            input_path = tmp_path / input_name
+            wav_path = tmp_path / "audio.wav"
+
+            tg_file = await context.bot.get_file(file_id)
+            await tg_file.download_to_drive(custom_path=str(input_path))
+
+            await _convert_audio_to_wav(
+                ffmpeg_path=ffmpeg_path,
+                input_path=input_path,
+                output_wav_path=wav_path,
+            )
+
+            transcriber = get_or_create_transcriber(context.bot_data)
+            recognized_text = await transcriber.transcribe_wav(str(wav_path))
+
+            if not recognized_text:
+                await message.reply_text("*urp* Я не смог распознать речь. Попробуй ещё раз.")
+                return
+
+            logger.info(
+                "STT text for user %s: %s",
+                user.id,
+                (recognized_text[:120] + "...") if len(recognized_text) > 120 else recognized_text,
+            )
+
+            await process_user_message(
+                update,
+                context,
+                message_text_override=recognized_text,
+            )
+    except SpeechToTextError as e:
+        logger.error("STT error for user %s: %s", user.id, e, exc_info=True)
+        await message.reply_text(
+            "*urp* Ошибка распознавания речи. Попробуй ещё раз или пришли текстом."
+        )
+    except Exception as e:
+        logger.error("Error processing voice/audio from user %s: %s", user.id, e, exc_info=True)
+        await message.reply_text(
+            "*burp* Чёрт, я облажался при обработке аудио. Попробуй ещё раз."
+        )
+
+
+async def _convert_audio_to_wav(
+    ffmpeg_path: str,
+    input_path: Path,
+    output_wav_path: Path,
+) -> None:
+    """Convert any audio file supported by ffmpeg to mono 16kHz PCM WAV."""
+    cmd = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        str(input_path),
+        "-ac",
+        "1",
+        "-ar",
+        str(WAV_SAMPLE_RATE_HZ),
+        "-c:a",
+        "pcm_s16le",
+        str(output_wav_path),
+    ]
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        stderr_text = (stderr or b"").decode("utf-8", errors="replace")
+        stdout_text = (stdout or b"").decode("utf-8", errors="replace")
+        logger.error(
+            "ffmpeg failed (code=%s). stdout=%s stderr=%s",
+            proc.returncode,
+            stdout_text[-2000:],
+            stderr_text[-2000:],
+        )
+        raise RuntimeError("ffmpeg failed to convert audio to wav")
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
