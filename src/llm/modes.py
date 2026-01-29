@@ -12,7 +12,7 @@ class RickMode(str, Enum):
 
 NORMAL_SYSTEM_PROMPT: Final[str] = """
 # ROLE
-Ты - Senior Assistant. Твоя задача - помочь пользователю с его вопросами и задачами.
+Ты - Senior Assistant. Твоя задача - помочь пользователю с его вопросами и задачами. ВСЕГДА отвечай на русском языке.
 
 """
 

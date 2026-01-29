@@ -72,11 +72,38 @@ async def initialize_application():
     # Initialize MCP managers (optional)
     mcp_managers: list[MCPManager] = []
     diary_mcp_manager: MCPManager | None = None
+    tracker_mcp_manager: MCPManager | None = None
 
     async def _init_manager(path: Path, name: str) -> MCPManager | None:
         try:
             logger.info("Initializing MCP manager: %s", name)
             manager = MCPManager(server_script_path=str(path))
+            try:
+                if await manager.initialize():
+                    logger.info("✓ MCP manager initialized: %s", name)
+                    return manager
+                logger.warning("⚠ MCP manager initialization failed: %s", name)
+            except asyncio.TimeoutError:
+                logger.warning("⚠ MCP manager initialization timed out: %s", name)
+            except Exception as init_error:
+                logger.warning(
+                    "⚠ MCP manager initialization error (%s): %s",
+                    name,
+                    init_error,
+                )
+        except Exception as e:
+            logger.warning("⚠ MCP manager creation error (%s): %s", name, e)
+        return None
+    
+    async def _init_command_manager(
+        *,
+        name: str,
+        command: str,
+        args: list[str],
+    ) -> MCPManager | None:
+        try:
+            logger.info("Initializing MCP manager: %s", name)
+            manager = MCPManager(server_command=command, server_args=args)
             try:
                 if await manager.initialize():
                     logger.info("✓ MCP manager initialized: %s", name)
@@ -99,9 +126,20 @@ async def initialize_application():
         diary_path = base_dir / "diary_mcp" / "server.py"
 
         diary_mcp_manager = await _init_manager(diary_path, "diary_mcp")
+        tracker_mcp_manager = await _init_command_manager(
+            name="tracker",
+            command="/Users/vchslv-mrzv/mapiArcadia/ml/infra/model_context_protocol/tools/proxy_client/proxy_client",
+            args=[
+                "-F",
+                str(Path("~/.mcp_store/oauth_token").expanduser()),
+                "--endpoint",
+                "mcp.yandex.net/ws?servers=tracker_mcp",
+            ],
+        )
 
         for manager in (
             diary_mcp_manager,
+            tracker_mcp_manager,
         ):
             if manager:
                 mcp_managers.append(manager)

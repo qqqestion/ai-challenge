@@ -19,7 +19,7 @@ class SpeechToTextError(RuntimeError):
 class SpeechToTextConfig:
     """Configuration for faster-whisper."""
 
-    model_size: str = "base"
+    model_size: str = "large-v2"
     device: str = "cpu"
     compute_type: str = "int8"
     language: Optional[str] = None
